@@ -21,10 +21,24 @@ attention-routed block codec used to develop the idea.
 > **Status: research code.** Validated on synthetic 3D turbulence. Not yet
 > tested on production simulation output. Numbers below are reproducible from
 > this repo (`colab.ipynb` → Run all, or the scripts in "Reproduce").
+>
+> ## Note: pushing consumer hardware further
+
+Conservation-preserving compression is also a lever on *where* scientific
+computing can run. Memory-bandwidth-bound solvers — lattice-Boltzmann chief
+among them — are limited less by raw FLOPs than by the traffic of moving large
+field arrays, which is exactly what a cluster's aggregate bandwidth buys. By
+shrinking that traffic in-loop while holding the physics invariant, this layer
+lets a single workstation hold larger domains and move less data per step,
+narrowing the gap that normally sends a problem to a supercluster. Paired with
+a workstation-scale stabilizer such as KPBM
+(github.com/alikamp/kpbm-workspace), the direction is to make
+resolved-enough transient 3D CFD reachable on consumer hardware — a
+cost- and accessibility-to-solution gain vs super clusters.....
 
 ---
 
-## The headline: ZFP+ (`zfp_plus.py`)
+## Dive in- ZFP+ (`zfp_plus.py`)
 
 Compress with ZFP, then solve in closed form for the single scale factor
 that makes the reconstruction's total energy equal the original's, and store

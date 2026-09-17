@@ -1,7 +1,11 @@
-# conserved-field-compression
+# Conserved-Field Compression
 
-**A closed-form, compressor-agnostic conservation layer for lossy scientific
-data compression.**
+**Make lossy scientific compression conserve the physics.**
+
+A closed-form conservation layer for ZFP and other lossy scientific codecs.
+Exact energy conservation, near-zero compression-ratio overhead, and no change
+to the codec's pointwise error bound. (Energy today; the same closed-form
+method extends to other invariants.)
 
 Lossy compressors for scientific floating-point grids (ZFP, SZ, TTHRESH)
 guarantee a *pointwise* error bound. They do **not** guarantee that

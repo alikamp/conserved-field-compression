@@ -1,4 +1,4 @@
-# conserved-field-compression
+# Parks Conserved-Field-Compression
 
 **A closed-form, compressor-agnostic conservation layer for lossy scientific
 data compression.**
@@ -20,7 +20,7 @@ attention-routed block codec used to develop the idea.
 
 ---
 
-## The headline: ZFP+ (`zfp_plus.py`)
+## Dive In: ZFP+ (`zfp_plus.py`)
 
 Compress with ZFP, then solve in closed form for the single scale factor
 that makes the reconstruction's total energy equal the original's, and store
@@ -52,7 +52,7 @@ restored = zfp_plus.decompress(payload)                     # == recon
 
 ## The standalone codec (`blocked.py`, `attention.py`, …)
 
-An attention-routed, block-local quantizer developed while exploring the idea.
+An attention-routed, block-local quantizer origination was developed.
 A physics-informed attention map (vorticity magnitude) routes per-block
 bit-precision; each block quantizes against its own local min/max; an
 algebraic layer enforces exact energy conservation.
@@ -79,9 +79,23 @@ recon = dequantize_blocked(bf)   # energy-conserving, block-local
 
 ---
 
-## What did NOT work (documented dead-ends)
+## Beyond storage: in-loop use
 
-Honest negative results, kept behind flags so they can be retested on real
+Because the layer only ever touches decompressed arrays, the same closed-form
+correction can sit *inside* a memory-bandwidth-bound solver, not just on its
+output files. Lattice-Boltzmann (LBM) is the motivating case: it is limited by
+the memory traffic of streaming its distribution functions, so compressing them
+in-loop could free bandwidth and let larger domains fit on a single node — with
+the conservation guarantee keeping integrated quantities intact across the run.
+Paired with a workstation-scale stabilizer such as KPBM
+(github.com/alikamp/kpbm-workspace), the direction is *usable transient 3D CFD on
+commodity hardware instead of cluster time* — a cost- and a substantial accessibility
+to-solution win vs a supercluster. (Direction, not yet
+benchmarked.)
+
+## What did NOT work 
+
+Negative results, included so they can be retested on real
 (anisotropic) data where they may behave differently:
 
 - **Downsampling smooth blocks** (`downsample="const"|"tri"`, `blocked.py`):

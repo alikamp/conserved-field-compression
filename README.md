@@ -1,11 +1,7 @@
-# Parks Conserved-Field Compression
+# conserved-field-compression
 
-**Make lossy scientific compression conserve the physics.**
-
-A closed-form conservation layer for ZFP and other lossy scientific codecs.
-Exact energy conservation, near-zero compression-ratio overhead, and no change
-to the codec's pointwise error bound. (Energy today; the same closed-form
-method extends to other invariants.)
+**A closed-form, compressor-agnostic conservation layer for lossy scientific
+data compression.**
 
 Lossy compressors for scientific floating-point grids (ZFP, SZ, TTHRESH)
 guarantee a *pointwise* error bound. They do **not** guarantee that
@@ -21,24 +17,10 @@ attention-routed block codec used to develop the idea.
 > **Status: research code.** Validated on synthetic 3D turbulence. Not yet
 > tested on production simulation output. Numbers below are reproducible from
 > this repo (`colab.ipynb` → Run all, or the scripts in "Reproduce").
->
-> ## Note: pushing consumer hardware further
-
-Conservation-preserving compression is also a lever on *where* scientific
-computing can run. Memory-bandwidth-bound solvers — lattice-Boltzmann chief
-among them — are limited less by raw FLOPs than by the traffic of moving large
-field arrays, which is exactly what a cluster's aggregate bandwidth buys. By
-shrinking that traffic in-loop while holding the physics invariant, this layer
-lets a single workstation hold larger domains and move less data per step,
-narrowing the gap that normally sends a problem to a supercluster. Paired with
-a workstation-scale stabilizer such as KPBM
-(github.com/alikamp/kpbm-workspace), the direction is to make
-resolved-enough transient 3D CFD reachable on consumer hardware — a
-cost- and accessibility-to-solution gain vs super clusters.....
 
 ---
 
-## Dive in- ZFP+ (`zfp_plus.py`)
+## The headline: ZFP+ (`zfp_plus.py`)
 
 Compress with ZFP, then solve in closed form for the single scale factor
 that makes the reconstruction's total energy equal the original's, and store
@@ -70,8 +52,8 @@ restored = zfp_plus.decompress(payload)                     # == recon
 
 ## The standalone codec (`blocked.py`, `attention.py`, …)
 
-An attention-routed, block-local quantizer developed while testing- toward
-a physics-informed attention map (vorticity magnitude) routes per-block
+An attention-routed, block-local quantizer developed while exploring the idea.
+A physics-informed attention map (vorticity magnitude) routes per-block
 bit-precision; each block quantizes against its own local min/max; an
 algebraic layer enforces exact energy conservation.
 

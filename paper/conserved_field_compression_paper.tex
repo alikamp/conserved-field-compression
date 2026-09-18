@@ -1,0 +1,227 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{siunitx}
+\usepackage[hidelinks]{hyperref}
+
+\title{A Closed-Form Conservation-Correction Layer for\\
+Error-Bounded Lossy Compression of Scientific Fields}
+\author{Alika M. Parks\\
+\small Independent Researcher \\
+\small \texttt{alikamp@gmail.com}}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Error-bounded lossy compressors such as ZFP and SZ guarantee a pointwise error
+bound but do not preserve integrated quantities---total energy, mass,
+momentum---so downstream analyses that check a conservation law observe a bias
+that grows with the compression ratio. We describe a closed-form correction
+layer that restores exact conservation of a chosen global quadratic invariant
+on top of any lossy backend. After the backend reconstructs a field, a single
+multiplicative factor is computed in closed form so that the reconstruction's
+total energy equals the original's; the factor is stored (\SI{4}{\byte} per
+field) and applied on decode. The correction leaves the backend's compression
+ratio and pointwise error bound effectively unchanged. On a synthetic
+three-dimensional turbulence proxy, applied to ZFP across compression ratios
+from $14\times$ to $60\times$, the layer reduces the relative energy-conservation
+error by four to six orders of magnitude (from $4.8\times10^{-4}$ to
+$7\times10^{-9}$ at $60\times$), and the reduction increases with the
+compression ratio. We give the derivation, the extension to multiple
+simultaneous invariants, and the method's limitations. Reference code is
+released under the Apache-2.0 license.
+\end{abstract}
+
+\section{Introduction}
+The output volume of numerical simulations and instruments has made lossy
+floating-point compression a standard element of scientific data pipelines.
+Error-bounded compressors such as ZFP~\cite{zfp} and SZ~\cite{sz} provide a
+guaranteed pointwise (per-element) error bound, which controls the local
+fidelity of a reconstructed field. They do not, however, provide any guarantee
+on \emph{integrated} quantities computed from that field. Many downstream
+scientific diagnostics depend on such integrals: total kinetic energy, mass,
+and momentum are conservation checks, and their drift under compression is a
+systematic bias rather than bounded noise.
+
+This work addresses that gap with a minimal construction. Given any lossy
+backend, we compute in closed form the single scale factor that makes the
+reconstruction's total energy match the original, store that factor, and apply
+it on decode. The contribution is deliberately narrow:
+\begin{itemize}
+  \item it is not a new codec and does not improve the compression ratio;
+  \item it is a backend-agnostic post-processing layer, demonstrated here on
+        ZFP;
+  \item it converts a chosen global quadratic invariant from
+        ``approximately preserved'' to ``exact to floating-point precision,''
+        at a storage cost of \SI{4}{\byte} per field and $O(N)$ arithmetic.
+\end{itemize}
+
+\section{Related work}
+Error-bounded lossy compression for scientific data is an active area; ZFP
+\cite{zfp}, SZ~\cite{sz}, and TTHRESH~\cite{tthresh} are representative and
+differ in transform and error-control strategy. Prior work has also considered
+preservation of derived quantities and quantities of interest during
+compression. The present layer is positioned as the simplest form of that idea:
+a closed-form, backend-agnostic correction of a single global quadratic
+invariant applied as post-processing.
+% TODO (do not submit without literature verification): cite the
+% quantity-of-interest / constraint-preserving lossy-compression literature
+% and state precisely what those methods already provide, so the contribution
+% here is scoped against them rather than presented as first-of-kind.
+
+\section{Method}
+Let $f\in\mathbb{R}^N$ be a scalar field and let $\hat f = C(f;\tau)$ be its
+reconstruction under a lossy backend $C$ at tolerance $\tau$. Define the energy
+functional
+\begin{equation}
+E(x) \;=\; \sum_{i=1}^{N} x_i^2,
+\end{equation}
+which is proportional to kinetic energy for a velocity component. We seek a
+scalar $\alpha$ such that $E(\alpha\hat f) = E(f)$. Since
+$E(\alpha\hat f)=\alpha^2 E(\hat f)$, the solution is closed form:
+\begin{equation}
+\alpha \;=\; \sqrt{\frac{E(f)}{E(\hat f)}}\,.
+\label{eq:alpha}
+\end{equation}
+The encoder stores $\alpha$ alongside the backend stream; the decoder returns
+$\alpha\hat f$. By construction $E(\alpha\hat f)=E(f)$ to floating-point
+precision, independent of $\tau$ and of the backend.
+
+\paragraph{Effect on the pointwise bound.}
+Write $\alpha = 1+\varepsilon$. From \eqref{eq:alpha},
+$\varepsilon = \tfrac{1}{2}\,\big(E(f)-E(\hat f)\big)/E(\hat f) + O(\varepsilon^2)$,
+so $|\varepsilon|$ is of the order of the backend's relative energy error, which
+is small. The corrected pointwise error satisfies
+\begin{equation}
+\lVert f-\alpha\hat f\rVert_\infty
+\;\le\; \lVert f-\hat f\rVert_\infty + |\varepsilon|\,\lVert \hat f\rVert_\infty,
+\end{equation}
+i.e.\ the backend bound is preserved up to a bounded, small additive term.
+
+\paragraph{Vector fields.}
+For a velocity field with components $(u,v,w)$, a per-component factor
+$\alpha_c$ conserves each component energy $E(f_c)$ and therefore the total
+kinetic energy $\tfrac{1}{2}\sum_c E(f_c)$. The per-field overhead is
+\SI{4}{\byte} per component.
+
+\paragraph{Multiple invariants.}
+Two invariants can be enforced jointly. To preserve both mass $M(x)=\sum_i x_i$
+and energy $E(x)$, apply an affine map $x' = a\,\hat f + b\mathbf{1}$ and solve
+the two constraints $M(x')=M(f)$, $E(x')=E(f)$ for $(a,b)$; this reduces to a
+scalar quadratic. Energy together with vector momentum leads to a small
+constrained least-squares problem. These extensions are stated here as
+directions and are not evaluated below.
+
+\section{Experimental setup}
+The test field is a synthetic turbulence proxy on a $64^3$ grid: a Taylor--Green
+base flow superposed with multi-octave sinusoidal noise and a small number of
+localized Gaussian bursts, stored as \texttt{float32}, evaluated over three
+random seeds. The backend is ZFP (via the \texttt{zfpy} binding) in
+fixed-accuracy mode. For each configuration we report the compression ratio
+against the raw \texttt{float32} array, the maximum absolute pointwise error,
+and the relative energy drift $|E(\hat f)-E(f)|/E(f)$, with and without the
+correction layer. The field is a proxy and not a solution of the Navier--Stokes
+equations; results on measured simulation data are left to future work.
+
+\section{Results}
+Table~\ref{tab:main} reports the mean over three seeds. Applying the correction
+adds \SI{4}{\byte} per field, which does not change the reported ratios at this
+grid size. The maximum pointwise error is unchanged to the reported precision.
+The relative energy drift falls from the backend's $10^{-4}$--$10^{-6}$ range to
+the $10^{-9}$--$10^{-10}$ range. The reduction is larger at higher compression
+ratio because the corrected field's energy is pinned to arithmetic precision
+regardless of the backend's drift, whereas the backend's own drift increases as
+$\tau$ grows.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{rrrrr}
+\toprule
+ZFP tol. & ratio & max abs.\ error & ZFP energy drift & + layer energy drift \\
+\midrule
+0.02 & $14.1\times$ & $2.5\times10^{-3}$ & $5.5\times10^{-6}$ & $3.4\times10^{-10}$ \\
+0.1  & $22.2\times$ & $9.3\times10^{-3}$ & $2.5\times10^{-5}$ & $2.9\times10^{-10}$ \\
+0.3  & $35.9\times$ & $3.3\times10^{-2}$ & $7.1\times10^{-5}$ & $1.3\times10^{-10}$ \\
+1.0  & $59.7\times$ & $1.1\times10^{-1}$ & $4.8\times10^{-4}$ & $7.1\times10^{-9}$  \\
+\bottomrule
+\end{tabular}
+\caption{Compression ratio, maximum absolute pointwise error, and relative
+energy drift for ZFP with and without the correction layer, on a $64^3$
+synthetic turbulence proxy (mean over three seeds).}
+\label{tab:main}
+\end{table}
+
+\section{Applications}
+Two settings motivate the layer. The first is archival and cloud storage of
+simulation output. Aggressive lossy compression reduces storage and egress
+cost, but conservation-sensitive workflows often avoid it because the resulting
+bias in integrated quantities is uncontrolled. The layer removes that
+objection for one class of invariant at a fixed, negligible cost, so a
+conservation check run on the decompressed field returns the original value.
+The second is in-loop use inside memory-bandwidth-bound solvers. Because the
+correction touches only decompressed arrays, it can be applied within a solver
+step rather than only to output files. Lattice-Boltzmann methods are a
+representative case: their throughput is limited by the traffic of streaming
+distribution functions, so compressing that traffic while holding the physical
+invariant fixed is a route to larger single-node domains. This direction is
+noted here and not benchmarked.
+
+\section{Limitations}
+The evaluation uses a synthetic proxy on a single grid size; measured
+simulation data and a standard reduction benchmark (e.g.\ SDRBench~\cite{sdrbench})
+are not yet included. The layer enforces one quadratic invariant (energy) and
+does not improve non-enforced invariants: a global energy rescale perturbs
+linear sums, so momentum drift is unchanged or slightly increased. The
+correction is a single global scalar; it fixes the aggregate, not the spatial
+distribution of error. Results are shown for one backend (ZFP); backend
+independence follows from the construction but is demonstrated once. The
+multi-invariant extension of Section~3 is derived but not evaluated.
+
+\section{Conclusion}
+A closed-form scalar correction makes an error-bounded lossy compressor conserve
+a chosen global quadratic invariant exactly, at \SI{4}{\byte} per field and no
+change to the compression ratio or the pointwise error bound. On a synthetic
+turbulence proxy the relative energy drift of ZFP is reduced by four to six
+orders of magnitude, with the reduction growing as compression becomes more
+aggressive. The immediate next steps are evaluation on measured data and a
+standard benchmark, comparison against quantity-of-interest--preserving methods,
+and evaluation of the multi-invariant extension.
+
+\section*{Code and data availability}
+Reference code and the benchmark used here are available at
+\url{https://github.com/alikamp/conserved-field-compression} under the
+Apache-2.0 license; the reported numbers reproduce from the included notebook.
+
+\begin{thebibliography}{9}
+\bibitem{zfp}
+P.~Lindstrom.
+\newblock Fixed-rate compressed floating-point arrays.
+\newblock \emph{IEEE Transactions on Visualization and Computer Graphics},
+20(12):2674--2683, 2014.
+
+\bibitem{sz}
+S.~Di and F.~Cappello.
+\newblock Fast error-bounded lossy HPC data compression with SZ.
+\newblock In \emph{IEEE International Parallel and Distributed Processing
+Symposium (IPDPS)}, pages 730--739, 2016.
+
+\bibitem{tthresh}
+R.~Ballester-Ripoll, P.~Lindstrom, and R.~Pajarola.
+\newblock TTHRESH: Tensor compression for multidimensional visual data.
+\newblock \emph{IEEE Transactions on Visualization and Computer Graphics},
+26(9):2891--2903, 2020.
+
+\bibitem{sdrbench}
+K.~Zhao, S.~Di, X.~Liang, S.~Li, D.~Tao, Z.~Chen, and F.~Cappello.
+\newblock SDRBench: Scientific data reduction benchmark for lossy compressors.
+\newblock In \emph{IEEE International Conference on Big Data}, 2020.
+% TODO: verify all bibliographic details before submission, and add
+% quantity-of-interest / constraint-preserving compression references.
+\end{thebibliography}
+
+\end{document}

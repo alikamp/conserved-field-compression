@@ -1,4 +1,4 @@
-# Conserved-Field Compression
+# Parks Conserved-Field Compression
 
 **Make lossy scientific compression conserve the physics.**
 

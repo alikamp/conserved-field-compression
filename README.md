@@ -70,8 +70,8 @@ restored = zfp_plus.decompress(payload)                     # == recon
 
 ## The standalone codec (`blocked.py`, `attention.py`, …)
 
-An attention-routed, block-local quantizer developed while testing the.
-A physics-informed attention map (vorticity magnitude) routes per-block
+An attention-routed, block-local quantizer developed while testing- toward
+a physics-informed attention map (vorticity magnitude) routes per-block
 bit-precision; each block quantizes against its own local min/max; an
 algebraic layer enforces exact energy conservation.
 

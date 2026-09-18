@@ -147,3 +147,43 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 ## Author
 
 Alika Parks · [github.com/alikamp](https://github.com/alikamp)
+
+## External review and current status - 9-18-26 >Update<
+
+After sharing this work, I received detailed feedback from a senior research
+professional in floating-point compression. The key points, and what I did
+about each:
+
+- **Prior art.** The idea of reducing integral-quantity error under lossy
+  compression is well-covered — including bias-correction work on ZFP and
+  quantity-of-interest–preserving compression in the SZ line. This is not a
+  new capability, and I've scoped the project accordingly: it is a utility,
+  not a novel method.
+- **Fair baseline.** ZFP already ships a bias-correction rounding mode
+  (`ZFP_ROUND_FIRST`). I rebuilt ZFP with it and re-benchmarked, matched on
+  max error rather than tolerance. Bias correction roughly halves energy
+  drift; the multiplicative rescale here still removes the residual, because
+  bias correction zeroes the *mean* (linear) error while energy is a sum of
+  squares that retains a positive variance term (Σεᵢ²) a rescale removes
+  deterministically. That distinction is the narrow thing this layer adds.
+- **Error tolerance.** The rescale can in principle exceed the codec's
+  pointwise bound by up to |α−1|·‖f̂‖∞. Measured on ZFP output it never did,
+  since ZFP's achieved error sits well below the requested tolerance; a
+  clamped-α variant makes it a hard guarantee if needed.
+- **"Exact" wording.** Conservation is exact only to the precision of the
+  stored scale factor (~1e-8 for a 4-byte factor, ~5e-10 for 8-byte), not
+  literally exact. Claims corrected throughout.
+- **Signed / zero-valued invariants.** The multiplicative form only works for
+  positive quadratic invariants like energy. Following the reviewer's
+  suggestion, an additive/affine correction was added: `x' = a·x + b`
+  conserves mass and energy simultaneously in closed form and handles
+  integrate-to-zero cases the multiplicative form can't.
+
+**Current state:** a working, codec-agnostic, post-hoc conservation-correction
+utility. It conserves a chosen invariant (energy multiplicatively; mass and
+energy jointly via the affine form) to floating-point precision, needs no
+recompilation of the underlying compressor, and is deterministic per field.
+It is not a replacement for ZFP/SZ and makes no compression-ratio claim over
+them; it is a small tool for workflows that need an integral quantity pinned
+after lossy compression. Reported as an engineering utility, with the review
+feedback above incorporated.

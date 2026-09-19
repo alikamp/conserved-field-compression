@@ -1,0 +1,49 @@
+Viewer-First Compression
+Sep 17, 2026 · @Alika
+Update — where this landed (Sep 17)
+After building and benchmarking, the honest headline changed. Lead with exact conservation on top of best-in-class lossy compression — not "beats zstd" (zstd is lossless; that comparison is misleading).
+• ZFP+ is the contribution. A compressor-agnostic conservation layer: wrap ZFP (or any lossy codec) and make total energy exact for ~12 bytes. It keeps ZFP's ratio (14–60x here) and pointwise error, and drives energy drift from ~5e-4 down to ~1e-9 — with the benefit growing as compression gets more aggressive.
+• Standalone codec improved but is not the star. Block-local quantization (#3) took it from 2.97x to 5.56x with ~6x lower error — but ZFP+ beats it on ratio, error, and conservation, which is why the layer-on-ZFP framing wins.
+• Documented dead-ends: low-attention downsampling, quantile auto-thresholds, and component-frame rotation. The rotation is elegant and energy-exact but buys nothing, because block-local quantization is scale-invariant — a clean insight worth keeping.
+Repo: conserved-field-compression, Apache 2.0.
+What it is
+A compression scheme for scientific floating-point grids (CFD, cosmology, detector data) that spends bits where the physics is, not where a generic entropy coder guesses byte patterns repeat. It watches the data the way a domain expert would, computing vorticity, gradients, shock fronts, before deciding what to keep at full precision and what to throw away. Then it forces the throwaway to still add up right: total energy, mass, momentum come out exact, even though most of the field was quantized down to 4-8 bits.
+The pitch in one line: treat the compressor like it's looking at the data, not just encoding it.
+Who it's for
+Anyone moving large floating-point simulation or sensor grids through a pipeline where storage or bandwidth is the bottleneck, and where a domain-specific error bound matters more than a generic one:
+• CFD engineers running turbulence or combustion sims who need to archive or checkpoint timesteps without losing the vortex cores and shock fronts that reviewers actually look at.
+• Cosmology and astrophysics teams compressing N-body or hydro simulation snapshots (density, velocity fields) for long-term storage or transfer between clusters, where conserved quantities (mass, momentum, energy) are the thing downstream analysis checks first.
+• Detector/instrument pipelines in high-energy physics or climate science pushing high-volume float grids off-device or between compute stages, where a fixed global error bound (SZ/ZFP-style) is too blunt because it treats a quiet background voxel the same as one inside a shock.
+• Simulation-as-a-service and HPC storage teams looking to cut storage/egress costs on checkpoint and output data without adopting a black-box lossy codec they can't tune to what their scientists actually care about preserving.
+• Tool builders who want a pluggable attention function (vorticity today, but swappable for gradient, curvature, Q-criterion, or a domain-specific detector) rather than a fixed one baked into the codec.
+What's novel
+Most scientific-data compressors (SZ, ZFP, TTHRESH, FPZIP) apply one error-bound rule uniformly across the whole array — pointwise or block-wise, but blind to what the data means. This project inverts that: it decides precision from physics-informed structure first, then quantizes, then repairs the aggregate.
+Three pieces are the actual novelty, each solving a gap the existing tools leave open:
+1. Attention comes from the physics, not the bytes. The front-end pass computes vorticity (curl of the velocity field) as a first-class structural signal — the same quantity a fluid dynamicist already looks at to find turbulence and shocks — and uses it directly to route bit allocation. Existing compressors infer "importance" from local variance or a fixed tolerance; this uses a physically meaningful field feature instead, so the bit budget lines up with what a domain scientist would flag as worth preserving.
+2. Hard conservation guarantee, not just a bounded error. SZ/ZFP guarantee a pointwise or PSNR error bound but say nothing about whether integrated quantities survive. Here, after quantization, an algebraic correction pass solves in closed form for the exact scale factor that makes total energy (sum-of-squares) of the reconstructed field match the original to float64 precision — not approximately, exactly. That means a downstream energy-budget check, a mass-conservation check, or a momentum audit passes on the compressed data even though most of the field was quantized to 4 bits. This is the part with no direct analog in mainstream lossy scientific compressors, which correct pointwise error but never re-close a global physical invariant.
+3. Tiering is a routing decision, not a fixed codec parameter. Bitwidth per voxel (4/8/16/32) is chosen per attention tier at compress time and packed compactly, so the format is naturally variable-rate without needing block subdivision or a separate compressed-size search loop the way rate-constrained codecs (e.g. ZFP's fixed-rate mode) do.
+Superseded — see the Sep 17 update at the top. The honest benchmark is ZFP+: same ratio and pointwise error as ZFP, with total energy exact to ~1e-9. The earlier "2.96x vs zstd" figure compared lossy against lossless and should not be used.
+How it works
+Four stages, each a separate, swappable module:
+1. Attention map — compute vorticity magnitude (curl of a 2D/3D vector field) or gradient magnitude (scalar fields), normalize to [0, 1]. High attention = shock fronts, vortex cores, chaotic boundaries. Low attention = smooth, laminar background.
+2. Adaptive bit-packing — route each voxel to a precision tier by its attention score (4-bit → 8-bit → 16-bit → lossless float32 passthrough), quantize per tier, pack tightly.
+3. Constraint alignment — solve in closed form for the multiplicative correction that makes the reconstructed field's total energy (or any sum-of-squares-type invariant) match the original exactly; apply it only to the lossy background tiers, leaving high-precision regions untouched.
+4. Entropy coding — serialize the multi-precision tiered stream and run it through zstandard, benchmarked against zstd/gzip on raw floats.
+Current status
+Working Python prototype (NumPy/SciPy/zstandard), validated end-to-end on a synthetic 64³ Taylor-Green-vortex-plus-noise turbulence field:
+
+ratio vs. raw
+This pipeline (tiered + zstd)
+2.96x
+zstd on raw floats
+1.70x
+gzip on raw floats
+1.62x
+32.2% of voxels compressed to 4 bits, only 0.5% needed full 32-bit fidelity, RMSE 0.01–0.04 on reconstruction, and total-energy relative error after correction dropped from ~1% to ~1e-9. Full run (attention map → quantize → correct → entropy-code) takes ~1.5s on a 64³ field.
+Not yet done: real (non-synthetic) simulation data, 2D image/pressure-field support beyond the vector-curl case, a proper container/CLI, and a combined (not per-component) energy invariant across u/v/w — noted as a known simplification in the current constraint layer.
+Open source plan
+• License: Apache 2.0 or MIT — permissive, so it's easy to adopt inside lab and HPC-center pipelines that mix licenses.
+• Repo structure: keep the four stages as separate modules (attention / bitpack / constraint / backend) with a thin pipeline orchestrator, matching the current prototype layout — makes it easy for contributors to swap in a new attention function or a different entropy backend without touching the rest.
+• First releases: ship the prototype as-is with a clear "research code" label, a synthetic benchmark suite, and a couple of real-world example datasets (public CFD or cosmology snapshots) so people can validate against their own data before trusting it.
+• Roadmap after that: combined multi-component energy invariant, a CLI and a simple file container format, pluggable attention functions (Q-criterion, curvature, domain-specific detectors), and a comparison harness against SZ/ZFP/TTHRESH on standard scientific-compression benchmark corpora (e.g. SDRBench).
+• Call for contributors: most useful early help is domain scientists trying it on real simulation output and reporting where the attention map or the conserved-quantity choice doesn't match what their field actually needs preserved — the attention function and the constraint metric are both meant to be swapped per domain, not fixed.

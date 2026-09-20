@@ -79,6 +79,35 @@ recon = dequantize_blocked(bf)   # energy-conserving, block-local
 
 ---
 
+## Backend test: PFPL, and the tight-bound trade-off
+
+To check the "codec-agnostic" claim on a second, independent backend, the
+correction layer was run as post-processing on PFPL (a guaranteed-error-bound
+lossy compressor), with no changes to PFPL. Two findings:
+
+- **It works, and there's more to remove.** Because PFPL saturates its error
+  bound (measured max error 0.97–1.00× the requested bound), its energy drift
+  is larger than a loose codec's — 3.6×10⁻³ to 5.3×10⁻² in these tests — and the
+  layer removes essentially all of it.
+- **On a tight-bound codec, the naive rescale breaks the guarantee.** With no
+  headroom, the correction pushes the max error to 1.04–1.24× the bound. This is
+  the tolerance trade-off in its sharpest form: with a loose codec (ZFP) there
+  is enough headroom that no breach occurs; with a saturating codec (PFPL) there
+  is none.
+- **The fix is a small, quantified trade.** Compressing at ~0.85× the target
+  bound restores headroom: after the rescale the error stays within the target
+  (≈0.97×) and energy is conserved, at ~5% cost to the compression ratio
+  (16.1× → 15.2× at one operating point). On a guaranteed-bound codec you spend
+  a little of the error budget to buy exact conservation without violating the
+  bound.
+
+Method note: the correction extends beyond a single quadratic invariant. Total
+energy of the form kinetic + potential (e.g. the wave equation) is a sum of
+quadratic forms, each of which scales as α² under a rescale, so a per-field
+scalar conserves each term (and their sum); a derivative-based potential-energy
+term is still a quadratic form and is handled the same way. Signed or
+zero-valued invariants (e.g. momentum) use the affine correction instead.
+
 ## Beyond storage: in-loop use
 
 Because the layer only ever touches decompressed arrays, the same closed-form

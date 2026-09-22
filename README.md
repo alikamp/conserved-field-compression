@@ -152,6 +152,15 @@ drive the instability. Stabilizing 3D in-loop compression would require
 constraining those higher moments (regularized-LBM territory), a separate and
 larger method than a conservation layer.
 
+3D + a field-local stabilizer (KPBM) — the boundary, pushed back. The 3D per-node restore alone only delays divergence (above). Pairing it with a shear-gated dissipation term (KPBM) closes that gap: at ZFP tol 3e-4, where plain BGK compressed-in-loop crashes at step 2106, the stabilized run survives the full 2500 steps and tracks the true (uncompressed) flow to ~3.5%. Sphere at Re=200, D3Q19, error measured against the α=0 uncompressed reference:
+
+config	result	err vs. true flow
+BGK (α=0), compressed	crash @2106	—
+KPBM α=0.10	stable	3.50%
+KPBM α=0.25	stable	3.47%
+KPBM α=0.50	stable	3.74%
+uniform viscosity (matched avg.)	stable	4.46%
+
 **1D wave equation — exact joint conservation for storage (`wave1d.py`).**
 When a field and its time-derivative `(u, u_t)` are compressed as one record,
 total energy splits into `KE = ½Σv²` and `PE = ½c²Σ(∂u/∂x)²` — two quadratic

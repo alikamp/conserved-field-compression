@@ -83,10 +83,8 @@ recon = dequantize_blocked(bf)   # energy-conserving, block-local
 
 ---
 
-## What did NOT work (documented dead-ends)
+## What did NOT work
 
-Honest negative results, kept behind flags so they can be retested on real
-(anisotropic) data where they may behave differently:
 
 - **Downsampling smooth blocks** (`downsample="const"|"tri"`, `blocked.py`):
   even trilinear-upsampled, buys ~+0.1× ratio for a large error increase. The

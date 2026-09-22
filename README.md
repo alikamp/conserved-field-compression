@@ -24,7 +24,7 @@ attention-routed block codec used to develop the idea.
 
 ---
 
-## The headline: ZFP+ (`zfp_plus.py`)
+## Dive in: ZFP+ (`zfp_plus.py`)
 
 Compress with ZFP, then solve in closed form for the single scale factor
 that makes the reconstruction's total energy equal the original's, and store

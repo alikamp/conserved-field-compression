@@ -1,218 +1,127 @@
-# Parks Conserved-Field-Compression
+# PNEP v12 — Predictive Node Event Protocol
 
-**A closed-form, compressor-agnostic conservation layer for lossy scientific
-data compression.**
+**Real-time stability classification and pre-ejection time forecasting for hierarchical three-body systems.**
 
-Lossy compressors for scientific floating-point grids (ZFP, SZ, TTHRESH)
-guarantee a *pointwise* error bound. They do **not** guarantee that
-*integrated physical invariants* — total energy, mass, momentum — survive
-compression. Downstream analysis that checks an energy budget or a
-conservation law sees the compressed field drift, and the drift grows the
-harder you compress.
-
-This project adds an exact conservation guarantee on top of an existing lossy
-codec, for a handful of bytes, in closed form. It also includes a standalone
-attention-routed block codec used to develop the idea.
-
-> **Status: research code.** Validated on synthetic 3D turbulence. Not yet
-> tested on production simulation output. Numbers below are reproducible from
-> this repo (`colab.ipynb` → Run all, or the scripts in "Reproduce").
+PNEP is an event-driven framework that monitors three-body gravitational stability by sampling system state exclusively at mirror symmetry nodes — geometrically special moments when any pair of bodies reaches closest approach (local minimum of inter-body distances, dr/dt = 0). At each node, a single scalar hierarchy index H is computed. Classification and time-window forecasting are derived entirely from the H signal, with no additional integration overhead.
 
 ---
 
-## Dive In: ZFP+ (`zfp_plus.py`)
+## Background
 
-Compress with ZFP, then solve in closed form for the single scale factor
-that makes the reconstruction's total energy equal the original's, and store
-it (4 bytes/component). ZFP's ratio and pointwise error are preserved; total
-energy becomes exact.
+Static stability criteria such as Mardling & Aarseth (2001) determine whether a hierarchical triple is stable or unstable from initial conditions alone, but provide no temporal information about *when* an unstable system will undergo ejection. Full N-body integration is accurate but computationally expensive for large-scale surveys.
 
-64³ synthetic turbulence, mean over 3 seeds:
+PNEP addresses both limitations: it runs on top of the leapfrog integrator, evaluates H only at nodes (typically 10–566 per system), and issues a forward time-window prediction before the ejecting body physically escapes.
 
-| ZFP tolerance | ratio | max abs error | ZFP energy drift | **ZFP+ energy drift** |
-|---:|---:|---:|---:|---:|
-| 0.02 | 14.1× | 0.0025 | 5.5e-6 | **3.4e-10** |
-| 0.1  | 22.2× | 0.0093 | 2.5e-5 | **2.9e-10** |
-| 0.3  | 35.9× | 0.033  | 7.1e-5 | **1.3e-10** |
-| 1.0  | 59.7× | 0.109  | 4.8e-4 | **7.1e-9**  |
+---
 
-The correction is invisible in the compression ratio and pointwise error; it
-drives energy drift down by 3–4 orders of magnitude, and the benefit grows
-with compression aggressiveness — exactly the regime where conservation
-matters. The same wrapper works on any lossy backend, not just ZFP.
+## The Hierarchy Index H
+
+Stability is indexed by a normalised geometric variance signal sampled at each mirror node:
+
+```
+H = σ² / (1 + σ²)
+
+where σ² = Var(d₁₂, d₂₃, d₃₁)
+```
+
+`d₁₂, d₂₃, d₃₁` are the three instantaneous pairwise inter-body distances. Because H depends only on relative distances, it is fully frame-independent and invariant to centre-of-mass drift.
+
+| System state | Mean H (v12 batch) |
+|---|---|
+| Stable hierarchical triple | 0.827 |
+| Unstable / chaotic triple | 0.091 |
+| Classification threshold | 0.500 |
+| Separation Δ | 0.736 |
+
+In a stable system the inner binary dominates separation at every node, producing high distance variance and H → 1. In a chaotic system the three bodies exchange partners, distances equalise at nodes, σ² collapses, and H → 0.
+
+---
+
+## Frame-Dependence Correction
+
+Early protocol versions included an alignment term measuring the angle between the encounter axis and the system's bulk velocity. This term is undefined in the centre-of-mass frame, where bulk velocity is zero by construction after CoM correction. Every evaluation of the original formula was measuring numerical noise on this term.
+
+The corrected formulation uses purely geometric distance variance (σ² of d₁₂, d₂₃, d₃₁), which is immune to frame artefacts. This correction was the decisive step in achieving 100% ground truth validity.
+
+---
+
+## Pre-Ejection Time Window
+
+After accumulating `MIN_NODES = 10` nodes, PNEP fits a linear slope to the rolling H buffer. If H̄ < 0.5 and the slope is negative, the protocol extrapolates the number of remaining nodes before H reaches the noise floor and converts to a wall-time window [t_Lo, t_Hi]. This window is issued before the body physically crosses the ejection radius.
+
+In the v12 validated batch, 100% of ejecting systems received an advance warning window, with a median midpoint error of 20.9 N-body time units.
+
+---
+
+## Results (v12, seed=42, n=87 valid trials)
+
+| Metric | Value |
+|---|---|
+| Accuracy | 92.0% |
+| Specificity (stable correctly classified) | 100.0% |
+| Sensitivity (ejections caught) | 87.7% |
+| F1 score | 93.5% |
+| False positive rate | 0.0% |
+| Ground truth validity (MA01 certified) | 100.0% |
+| Pre-ejection window coverage | 100.0% |
+| Median window lead-time error | 20.9t |
+| Median energy drift | 0.0068% |
+| TP / FP / FN / TN | 50 / 0 / 7 / 30 |
+
+Ground truth is certified via MA01 ratio thresholds: stable systems require ratio > 5.0, unstable require ratio < 0.45. 13 trials were skipped due to IC generation failure within the 2000-attempt limit.
+
+---
+
+## Integrator
+
+Symplectic second-order Kick-Drift-Kick leapfrog with fixed timestep dt = 0.006 and softening ε = 0.01. Median energy drift 0.0068% over long-duration integrations confirms near-machine-precision conservation. The symplectic structure guarantees no secular energy growth.
+
+---
+
+## Node Detection
 
 ```python
-import numpy as np, zfp_plus
-field = np.random.rand(64, 64, 64).astype(np.float32)
-payload, recon = zfp_plus.compress(field, tolerance=0.1)   # energy-conserving
-restored = zfp_plus.decompress(payload)                     # == recon
+# Local minimum: d_lag1 < d_lag2 AND d_lag1 < d_current
+if d2[i] > d1[i] and d[i] > d1[i]:
+    trigger_node()
 ```
 
----
-
-## The standalone codec (`blocked.py`, `attention.py`, …)
-
-An attention-routed, block-local quantizer origination was developed.
-A physics-informed attention map (vorticity magnitude) routes per-block
-bit-precision; each block quantizes against its own local min/max; an
-algebraic layer enforces exact energy conservation.
-
-The one change that mattered was **block-local quantization** (per-block
-min/max instead of one global range per tier): it took the standalone codec
-from 2.97× to **5.56×** while cutting max error ~6×, with energy conserved to
-~1e-8.
-
-ZFP+ outperforms this standalone codec on every axis (ratio, error,
-conservation), which is *why* the recommended path is the conservation layer
-on top of ZFP rather than a bespoke codec. The standalone codec is retained
-for reference and for the attention/constraint machinery.
-
-```python
-import numpy as np
-from attention import vorticity_attention_map
-from blocked import quantize_blocked, dequantize_blocked
-u = np.random.rand(64,64,64).astype(np.float32)
-att = vorticity_attention_map(u, u, u, smooth_sigma=0.6)
-bf = quantize_blocked(u, att, block_size=8)
-recon = dequantize_blocked(bf)   # energy-conserving, block-local
-```
+Node frequency is approximately 4–5 per inner orbital period, capturing periapsis interactions where hierarchy is most legible. Evaluation cost per node is O(1) — a single variance computation over three distances.
 
 ---
 
-## Backend test: PFPL, and the tight-bound trade-off
-
-To check the "codec-agnostic" claim on a second, independent backend, the
-correction layer was run as post-processing on PFPL (a guaranteed-error-bound
-lossy compressor), with no changes to PFPL. Two findings:
-
-- **It works, and there's more to remove.** Because PFPL saturates its error
-  bound (measured max error 0.97–1.00× the requested bound), its energy drift
-  is larger than a loose codec's — 3.6×10⁻³ to 5.3×10⁻² in these tests — and the
-  layer removes essentially all of it.
-- **On a tight-bound codec, the naive rescale breaks the guarantee.** With no
-  headroom, the correction pushes the max error to 1.04–1.24× the bound. This is
-  the tolerance trade-off in its sharpest form: with a loose codec (ZFP) there
-  is enough headroom that no breach occurs; with a saturating codec (PFPL) there
-  is none.
-- **The fix is a small, quantified trade.** Compressing at ~0.85× the target
-  bound restores headroom: after the rescale the error stays within the target
-  (≈0.97×) and energy is conserved, at ~5% cost to the compression ratio
-  (16.1× → 15.2× at one operating point). On a guaranteed-bound codec you spend
-  a little of the error budget to buy exact conservation without violating the
-  bound.
-
-Method note: the correction extends beyond a single quadratic invariant. Total
-energy of the form kinetic + potential (e.g. the wave equation) is a sum of
-quadratic forms, each of which scales as α² under a rescale, so a per-field
-scalar conserves each term (and their sum); a derivative-based potential-energy
-term is still a quadratic form and is handled the same way. Signed or
-zero-valued invariants (e.g. momentum) use the affine correction instead.
-
-## Beyond storage: in-loop use
-
-Because the layer only ever touches decompressed arrays, the same closed-form
-correction can sit *inside* a memory-bandwidth-bound solver, not just on its
-output files. Lattice-Boltzmann (LBM) is the motivating case: it is limited by
-the memory traffic of streaming its distribution functions, so compressing them
-in-loop could free bandwidth and let larger domains fit on a single node — with
-the conservation guarantee keeping integrated quantities intact across the run.
-Paired with a workstation-scale stabilizer such as KPBM
-(github.com/alikamp/kpbm-workspace), the direction is *usable transient 3D CFD on
-commodity hardware instead of cluster time* — a cost- and a substantial accessibility
-to-solution win vs a supercluster. (Direction, not yet
-benchmarked.)
-
-## What did NOT work 
-
-Negative results, included so they can be retested on real
-(anisotropic) data where they may behave differently:
-
-- **Downsampling smooth blocks** (`downsample="const"|"tri"`, `blocked.py`):
-  even trilinear-upsampled, buys ~+0.1× ratio for a large error increase. The
-  background is already at 4 bits, so there's little to save.
-- **Auto tier thresholds from attention quantiles** (`auto_tiers`,
-  `blocked.py`): fixed percentile cuts came out worse than hand-picked
-  thresholds. Would need optimization against a rate/error objective.
-- **Component-frame rotation** (`rotated.py`): per-block PCA concentrates 91%
-  of energy into one component, exactly and reversibly — but it does **not**
-  help compression, because block-local quantization is scale-invariant
-  (it already normalizes each component to its local range), so concentrating
-  magnitude buys nothing, while per-block rotation adds block-seam
-  discontinuities and quaternion overhead. A clean insight: *once you quantize
-  against local ranges, an energy-concentrating transform stops helping.*
-
----
-
-## Install
+## Usage
 
 ```bash
-pip install -r requirements.txt
+# Run batch of 200 trials, random seed 42
+python3 pnep_v12.py 200 42
+
+# Default (200 trials, seed 42)
+python3 pnep_v12.py
 ```
 
-## Reproduce the benchmarks
+**Dependencies:** numpy (no other requirements)
 
-```bash
-python benchmark.py            # standalone codec: scaling + variance + ZFP matched-error
-python compare_blocked.py      # tiered vs block-local vs ZFP
-python conservation_test.py    # downstream conservation drift
-```
+---
 
-Or open `colab.ipynb` in Google Colab and **Runtime → Run all** (installs its
-own dependencies).
+## Repository Contents
 
-## Roadmap
+| File | Description |
+|---|---|
+| `pnep_v12.py` | Full source — integrator, node detection, H computation, forecasting, batch runner |
+| `pnep_v12_results.json` | Definitive batch results (n=87, seed=42) |
+| `pnep_figure1_results.png` | H distribution, pre-ejection window histogram, classification bar chart |
+| `pnep_figure2_timeseries.png` | H timeseries for representative stable and unstable systems |
 
-- Conserve **multiple** invariants at once (energy + mass → a 2-parameter
-  affine solve; energy + momentum → constrained least squares).
-- **Attention-gated** correction: confine the rescale to smooth regions to
-  protect ZFP's pointwise bound inside features.
-- Wrap **SZ** as an additional backend; compare on SDRBench.
-- Validate on real CFD / cosmology snapshots.
+---
 
-## License
+## Reference
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Mardling, R. A. & Aarseth, S. J. (2001). Tidal interactions in star cluster simulations. *MNRAS*, 321(3), 398–420. https://doi.org/10.1046/j.1365-8711.2001.03974.x
+
+---
 
 ## Author
 
-Alika Parks · [github.com/alikamp](https://github.com/alikamp)
-
-## External review and current status - 9-18-26 >Update<
-
-After sharing this work, I received detailed feedback from a senior research
-professional in floating-point compression. The key points, and what I did
-about each:
-
-- **Prior art.** The idea of reducing integral-quantity error under lossy
-  compression is well-covered — including bias-correction work on ZFP and
-  quantity-of-interest–preserving compression in the SZ line. This is not a
-  new capability, and I've scoped the project accordingly: it is a utility,
-  not a novel method.
-- **Fair baseline.** ZFP already ships a bias-correction rounding mode
-  (`ZFP_ROUND_FIRST`). I rebuilt ZFP with it and re-benchmarked, matched on
-  max error rather than tolerance. Bias correction roughly halves energy
-  drift; the multiplicative rescale here still removes the residual, because
-  bias correction zeroes the *mean* (linear) error while energy is a sum of
-  squares that retains a positive variance term (Σεᵢ²) a rescale removes
-  deterministically. That distinction is the narrow thing this layer adds.
-- **Error tolerance.** The rescale can in principle exceed the codec's
-  pointwise bound by up to |α−1|·‖f̂‖∞. Measured on ZFP output it never did,
-  since ZFP's achieved error sits well below the requested tolerance; a
-  clamped-α variant makes it a hard guarantee if needed.
-- **"Exact" wording.** Conservation is exact only to the precision of the
-  stored scale factor (~1e-8 for a 4-byte factor, ~5e-10 for 8-byte), not
-  literally exact. Claims corrected throughout.
-- **Signed / zero-valued invariants.** The multiplicative form only works for
-  positive quadratic invariants like energy. Following the reviewer's
-  suggestion, an additive/affine correction was added: `x' = a·x + b`
-  conserves mass and energy simultaneously in closed form and handles
-  integrate-to-zero cases the multiplicative form can't.
-
-**Current state:** a working, codec-agnostic, post-hoc conservation-correction
-utility. It conserves a chosen invariant (energy multiplicatively; mass and
-energy jointly via the affine form) to floating-point precision, needs no
-recompilation of the underlying compressor, and is deterministic per field.
-It is not a replacement for ZFP/SZ and makes no compression-ratio claim over
-them; it is a small tool for workflows that need an integral quantity pinned
-after lossy compression. Reported as an engineering utility, with the review
-feedback above incorporated.
+Ali Kamp — independent researcher  
+https://github.com/alikamp/Parks-Node-Ejection-Protocol

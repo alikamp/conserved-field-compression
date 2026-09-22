@@ -1,6 +1,6 @@
 # Conserved-Field Compression
 
-**Make lossy scientific compression conserve the physics.**
+**Lossy scientific compression conserving the physics.**
 
 A closed-form conservation layer for ZFP and other lossy scientific codecs.
 Exact energy conservation, near-zero compression-ratio overhead, and no change

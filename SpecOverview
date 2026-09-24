@@ -1,7 +1,7 @@
 Viewer-First Compression
 Sep 17, 2026 · @Alika
 Update — where this landed (Sep 17)
-After building and benchmarking, the honest headline changed. Lead with exact conservation on top of best-in-class lossy compression — not "beats zstd" (zstd is lossless; that comparison is misleading).
+After building and benchmarking, the headline changed. Lead with exact conservation on top of best-in-class lossy compression — not "beats zstd" (zstd is lossless; that comparison is misleading).
 • ZFP+ is the contribution. A compressor-agnostic conservation layer: wrap ZFP (or any lossy codec) and make total energy exact for ~12 bytes. It keeps ZFP's ratio (14–60x here) and pointwise error, and drives energy drift from ~5e-4 down to ~1e-9 — with the benefit growing as compression gets more aggressive.
 • Standalone codec improved but is not the star. Block-local quantization (#3) took it from 2.97x to 5.56x with ~6x lower error — but ZFP+ beats it on ratio, error, and conservation, which is why the layer-on-ZFP framing wins.
 • Documented dead-ends: low-attention downsampling, quantile auto-thresholds, and component-frame rotation. The rotation is elegant and energy-exact but buys nothing, because block-local quantization is scale-invariant — a clean insight worth keeping.

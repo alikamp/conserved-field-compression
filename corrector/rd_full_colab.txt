@@ -1,0 +1,56 @@
+# ============================================================================
+#  IWBDR-6 backbone runs (E1/E2): systematic storage-case RD on real SDRBench
+#  data. ZFP path works immediately; SZ3/MGARD/ROUND_FIRST need libpressio.
+#  Upload rd_full.py to the Colab session first (folder icon -> upload).
+# ============================================================================
+
+# --- Cell 1: deps + a real 3D field -----------------------------------------
+!pip -q install zfpy
+import glob, numpy as np, os
+if not glob.glob('**/*f48*.f32', recursive=True):
+    !wget -q --show-progress https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-100x500x500.tar.gz
+    !tar xzf SDRBENCH-Hurricane-ISABEL-100x500x500.tar.gz
+def load(name, shape=(100,500,500)):
+    p = sorted(glob.glob(f'**/{name}*.f32', recursive=True))[0]
+    return np.ascontiguousarray(np.fromfile(p, dtype='<f4').reshape(shape))
+print("fields present:", len(glob.glob('**/*f48*.f32', recursive=True)))
+
+# --- Cell 2: ZFP sweep on real data, 3D + 2D slice + 1D line-out ------------
+# (real coded ratios; this is E1 for ZFP + the dimensionality axis E3)
+from rd_full import study, print_rows, ZFP, lineout
+f3 = load('TCf48')                       # 3D temperature
+rows  = study(f3,          "ISABEL-TC-3d", ZFP())
+rows += study(f3[50],      "ISABEL-TC-2d", ZFP())     # a 2D slice
+rows += study(lineout(f3), "ISABEL-TC-1d", ZFP())     # 1D line-out (scientific 1D series)
+print_rows(rows)
+import csv
+with open('rd_zfp.csv','w',newline='') as fp:
+    w=csv.DictWriter(fp, fieldnames=rows[0].keys()); w.writeheader(); w.writerows(rows)
+print("saved rd_zfp.csv")
+
+# --- Cell 3: OPTIONAL — SZ3 / MGARD / ZFP-ROUND_FIRST via libpressio --------
+# libpressio isn't on pip; install via conda. condacolab restarts the kernel ONCE,
+# then re-run from Cell 1. (Exact plugin package names: confirm with Martin —
+# he works with these daily; libpressio's SZ3/MGARD plugins can be finicky.)
+#
+#   !pip -q install condacolab
+#   import condacolab; condacolab.install()          # <- restarts kernel here
+#   # after restart:
+#   !conda install -y -c conda-forge libpressio libpressio-sz3 libpressio-mgard
+#
+# then:
+# from rd_full import study, print_rows, Libpressio
+# codecs = [Libpressio('sz3'), Libpressio('mgard'), Libpressio('zfp', round_first=True)]
+# rows = []
+# for c in codecs:
+#     for fld,name in [(f3,'TC-3d'),(f3[50],'TC-2d'),(lineout(f3),'TC-1d')]:
+#         rows += study(fld, name, c)
+# print_rows(rows)
+#
+# Note: the ZFP ROUND_FIRST option is passed as zfp:round=1 in rd_full.py's
+# Libpressio adapter; adjust to your libpressio version if the key differs.
+
+# --- What to send back ------------------------------------------------------
+# rd_zfp.csv (+ the libpressio rows) — I'll fold them into the paper's backbone
+# table: real ratio, PSNR, mass/energy drift raw vs corrected, bound preserved,
+# across codecs x dimensions.

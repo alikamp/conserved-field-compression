@@ -432,7 +432,7 @@ static inline void conserve_linear_params(float* const __restrict__ d_x, const l
 {
   double* d_res;
   if (d_w) {
-    cudaMalloc(&d_res, 2 * sizeof(double));
+    cudaMalloc(&d_res, 3 * sizeof(double));
     cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
 
     c_wsum_sum<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_w, d_res);
@@ -440,7 +440,7 @@ static inline void conserve_linear_params(float* const __restrict__ d_x, const l
 
     cudaMemcpy(&b_out, &d_res[2], sizeof(double), cudaMemcpyDeviceToHost);
   } else {
-    cudaMalloc(&d_res, 1 * sizeof(double));
+    cudaMalloc(&d_res, 2 * sizeof(double));
     cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
 
     c_sum<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);

@@ -38,6 +38,32 @@ int main(){
            a,b,md, md==0.0?"identical":"(float rounding)");
     delete[] y; delete[] z; }
 
+  /* ---- precompute path, linear invariants: params (1,b) + single pass == two-pass ---- */
+  { float* y=new float[N]; float* z=new float[N]; float* w=new float[N];
+    for(long i=0;i<N;i++) w[i]=(float)(1.0+0.5*sin(0.37*i));      /* density-like weight in [0.5,1.5]; no rand() so later sections are unchanged */
+    double a,b,md;
+    /* unweighted (mass): conserve_linear vs conserve_linear_params(w=NULL) */
+    for(long i=0;i<N;i++){ y[i]=(float)(round(orig[i]/q)*q); z[i]=y[i]; }
+    conserve_linear(y,N,M0);                                       /* two-pass reference */
+    conserve_linear_params(z,N,M0,NULL,&a,&b);                     /* encoder: (1,b) */
+    conserve_apply_affine(z,N,a,b);                                /* decoder: one pass */
+    md=0; for(long i=0;i<N;i++){ double d=fabs((double)y[i]-z[i]); if(d>md)md=d; }
+    double Ml=0; for(long i=0;i<N;i++) Ml+=z[i];
+    printf("[precompute linear] mass:     single vs two-pass max diff = %.2e  %s; mass drift -> %.2e\n",
+           md, md==0.0?"identical":"(float rounding)", fabs(Ml-M0)/fabs(M0));
+    /* weighted (momentum, w = density): conserve_linear_w vs conserve_linear_params(w) */
+    double L0=0; for(long i=0;i<N;i++) L0+=(double)w[i]*orig[i];   /* true momentum */
+    for(long i=0;i<N;i++){ y[i]=(float)(round(orig[i]/q)*q); z[i]=y[i]; }
+    double Lq=0; for(long i=0;i<N;i++) Lq+=(double)w[i]*z[i];
+    conserve_linear_w(y,N,L0,w);                                   /* two-pass reference */
+    conserve_linear_params(z,N,L0,w,&a,&b);                        /* encoder: (1,b) */
+    conserve_apply_affine(z,N,a,b);                                /* decoder: one pass, no w */
+    md=0; for(long i=0;i<N;i++){ double d=fabs((double)y[i]-z[i]); if(d>md)md=d; }
+    double Lc=0; for(long i=0;i<N;i++) Lc+=(double)w[i]*z[i];
+    printf("[precompute linear] momentum: single vs two-pass max diff = %.2e  %s; momentum drift %.2e -> %.2e\n",
+           md, md==0.0?"identical":"(float rounding)", fabs(Lq-L0)/fabs(L0), fabs(Lc-L0)/fabs(L0));
+    delete[] y; delete[] z; delete[] w; }
+
   /* ---- 2a. ABS: field with far-from-mean outliers; error within b'=(1-e)eps ---- */
   for(long i=0;i<N;i++) orig[i]=(float)urand(9.0,11.0);          /* mean ~10 */
   for(long i=0;i<2000;i++) orig[i]=(float)(10.0+(frand()<.5?-1:1)*urand(6,9)); /* outliers */

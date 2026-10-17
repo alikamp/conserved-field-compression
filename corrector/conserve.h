@@ -17,12 +17,22 @@
     (3) AFTER decompression: call the matching conserve_* routine in place.
 
   All reductions are in double; the array stays in the codec's precision.
+  CPU parallelism: every loop carries an OpenMP pragma (compile with -fopenmp);
+  without it the pragmas are ignored and the code runs serially, unchanged.
   GPU mapping (per routine): parallel reduction(s) to get the sums, compute
   2–3 scalars on the host, then one elementwise (fused multiply-add) kernel.
 */
 #ifndef CONSERVE_H
 #define CONSERVE_H
 #include <math.h>
+
+/* OpenMP (CPU parallelism): active only when compiled with -fopenmp; otherwise
+   CONS_OMP expands to nothing and every loop runs serially, unchanged. */
+#ifdef _OPENMP
+#define CONS_OMP(...) _Pragma(#__VA_ARGS__)
+#else
+#define CONS_OMP(...)
+#endif
 
 /* ---------------------------------------------------------------------------
    Mass + energy (the workhorse).  Decoupled affine, ALWAYS real.
@@ -42,12 +52,14 @@
 static inline void conserve_mass_energy(float* x, long N, double M0, double S0)
 {
     double s = 0.0, s2 = 0.0;
+    CONS_OMP(omp parallel for reduction(+:s,s2))
     for (long i = 0; i < N; i++) { double v = x[i]; s += v; s2 += v * v; }   /* reduce */
     const double mean  = s  / (double)N;
     const double var   = s2 / (double)N - mean * mean;
     const double mean0 = M0 / (double)N;
     const double var0  = S0 / (double)N - mean0 * mean0;
     const double a = (var > 0.0) ? sqrt(var0 / var) : 1.0;
+    CONS_OMP(omp parallel for)
     for (long i = 0; i < N; i++)                                             /* map   */
         x[i] = (float)(mean0 + a * ((double)x[i] - mean));
 }
@@ -62,8 +74,10 @@ static inline void conserve_mass_energy(float* x, long N, double M0, double S0)
 static inline void conserve_linear(float* x, long N, double L0)
 {
     double s = 0.0;
+    CONS_OMP(omp parallel for reduction(+:s))
     for (long i = 0; i < N; i++) s += x[i];
     const double b = (L0 - s) / (double)N;
+    CONS_OMP(omp parallel for)
     for (long i = 0; i < N; i++) x[i] = (float)((double)x[i] + b);
 }
 
@@ -81,8 +95,10 @@ static inline void conserve_linear_w(float* x, long N, double L0, const float* w
 {
     if (!w) { conserve_linear(x, N, L0); return; }
     double swx = 0.0, sw = 0.0;
+    CONS_OMP(omp parallel for reduction(+:swx,sw))
     for (long i = 0; i < N; i++) { swx += (double)w[i] * x[i]; sw += (double)w[i]; }
     const double b = (sw != 0.0) ? (L0 - swx) / sw : 0.0;
+    CONS_OMP(omp parallel for)
     for (long i = 0; i < N; i++) x[i] = (float)((double)x[i] + b);
 }
 
@@ -111,8 +127,11 @@ static inline void conserve_apply(float* x, long N, int which,
     if (want_m && want_e) { conserve_mass_energy(x, N, M0, S0); return; }  /* offset + scale */
     if (want_m)           { conserve_linear_w(x, N, M0, w);     return; }  /* mass/momentum: (weighted) offset */
     if (want_e) {                                                          /* energy only: global scale */
-        double s2 = 0.0; for (long i = 0; i < N; i++) { double v = x[i]; s2 += v*v; }
+        double s2 = 0.0;
+        CONS_OMP(omp parallel for reduction(+:s2))
+        for (long i = 0; i < N; i++) { double v = x[i]; s2 += v*v; }
         const double a = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0;
+        CONS_OMP(omp parallel for)
         for (long i = 0; i < N; i++) x[i] = (float)(a * (double)x[i]);
     }
 }
@@ -151,8 +170,10 @@ static inline void conserve_apply(float* x, long N, int which,
 static inline double conserve_scale_mass(float* x, long N, double L0)
 {
     double s = 0.0;
+    CONS_OMP(omp parallel for reduction(+:s))
     for (long i = 0; i < N; i++) s += x[i];
     const double a = (s != 0.0) ? L0 / s : 1.0;
+    CONS_OMP(omp parallel for)
     for (long i = 0; i < N; i++) x[i] = (float)(a * (double)x[i]);
     return a;
 }
@@ -165,6 +186,7 @@ static inline double conserve_mass_energy_maxdisp(const float* x, long N,
                                                   double M0, double S0)
 {
     double s = 0.0, s2 = 0.0;
+    CONS_OMP(omp parallel for reduction(+:s,s2))
     for (long i = 0; i < N; i++) { double v = x[i]; s += v; s2 += v * v; }
     const double mean  = s  / (double)N;
     const double var   = s2 / (double)N - mean * mean;
@@ -173,6 +195,7 @@ static inline double conserve_mass_energy_maxdisp(const float* x, long N,
     const double a = (var > 0.0) ? sqrt(var0 / var) : 1.0;
     const double off = mean0 - a * mean;
     double md = 0.0;
+    CONS_OMP(omp parallel for reduction(max:md))
     for (long i = 0; i < N; i++) {
         double d = fabs((a - 1.0) * ((double)x[i] - mean) + off);
         if (d > md) md = d;
@@ -193,8 +216,11 @@ static inline int conserve_apply_rel(float* x, long N, int which,
     if (want_m && want_e) return 0;                 /* not single-affine under REL */
     if (want_m) { conserve_scale_mass(x, N, M0); return 1; }
     if (want_e) {
-        double s2 = 0.0; for (long i = 0; i < N; i++) { double v = x[i]; s2 += v*v; }
+        double s2 = 0.0;
+        CONS_OMP(omp parallel for reduction(+:s2))
+        for (long i = 0; i < N; i++) { double v = x[i]; s2 += v*v; }
         const double a = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0;
+        CONS_OMP(omp parallel for)
         for (long i = 0; i < N; i++) x[i] = (float)(a * (double)x[i]);
         return 1;
     }
@@ -221,6 +247,7 @@ static inline int conserve_apply_rel(float* x, long N, int which,
 /* Decoder: single pass, no reduction. x[i] <- a*x[i] + b. */
 static inline void conserve_apply_affine(float* x, long N, double a, double b)
 {
+    CONS_OMP(omp parallel for)
     for (long i = 0; i < N; i++) x[i] = (float)(a * (double)x[i] + b);
 }
 
@@ -231,6 +258,7 @@ static inline void conserve_mass_energy_params(const float* x, long N,
                                                double* a_out, double* b_out)
 {
     double s = 0.0, s2 = 0.0;
+    CONS_OMP(omp parallel for reduction(+:s,s2))
     for (long i = 0; i < N; i++) { double v = x[i]; s += v; s2 += v * v; }
     const double mean  = s  / (double)N;
     const double var   = s2 / (double)N - mean * mean;
@@ -246,8 +274,14 @@ static inline void conserve_linear_params(const float* x, long N, double L0,
                                           double* a_out, double* b_out)
 {
     double swx = 0.0, sw = 0.0;
-    if (w) { for (long i = 0; i < N; i++) { swx += (double)w[i]*x[i]; sw += (double)w[i]; } }
-    else   { for (long i = 0; i < N; i++)   swx += x[i];             sw = (double)N;      }
+    if (w) {
+        CONS_OMP(omp parallel for reduction(+:swx,sw))
+        for (long i = 0; i < N; i++) { swx += (double)w[i]*x[i]; sw += (double)w[i]; }
+    } else {
+        CONS_OMP(omp parallel for reduction(+:swx))
+        for (long i = 0; i < N; i++) swx += x[i];
+        sw = (double)N;
+    }
     *a_out = 1.0; *b_out = (sw != 0.0) ? (L0 - swx) / sw : 0.0;
 }
 
@@ -255,7 +289,9 @@ static inline void conserve_linear_params(const float* x, long N, double L0,
 static inline void conserve_energy_params(const float* x, long N, double S0,
                                           double* a_out, double* b_out)
 {
-    double s2 = 0.0; for (long i = 0; i < N; i++) { double v = x[i]; s2 += v*v; }
+    double s2 = 0.0;
+    CONS_OMP(omp parallel for reduction(+:s2))
+    for (long i = 0; i < N; i++) { double v = x[i]; s2 += v*v; }
     *a_out = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0; *b_out = 0.0;
 }
 

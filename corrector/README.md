@@ -23,6 +23,8 @@ backbone harness for the IWBDR-6 storage-case study.
 ```sh
 # C++ reference correctness
 g++ -O2 conserve_test.cpp -o ctest && ./ctest
+# multi-threaded CPU (OpenMP): same results, add -fopenmp
+g++ -O2 -fopenmp conserve_test.cpp -o ctest && ./ctest
 
 # Python RD harness, ZFP self-test (synthetic 3D + 2D slice + 1D line-out)
 pip install zfpy numpy

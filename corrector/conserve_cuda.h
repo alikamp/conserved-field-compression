@@ -27,42 +27,108 @@
 
 static constexpr const int TPB = 512;  // threads per block
 
-static __global__ void c_sum(const float* const __restrict__ x, const long N, double* const __restrict__ res)
+static __global__ void c_sum(const float* const __restrict__ x, const long long N, double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    const double v = x[tid];
-    atomicAdd(&res[0], v);
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+
+  double val = 0.0;
+  for (long long i = start; i < N; i += incr) {
+    const double v = x[i];
+    val += v;
+  }
+
+  val += __shfl_xor_sync(~0, val, 1);
+  val += __shfl_xor_sync(~0, val, 2);
+  val += __shfl_xor_sync(~0, val, 4);
+  val += __shfl_xor_sync(~0, val, 8);
+  val += __shfl_xor_sync(~0, val, 16);
+
+  if ((threadIdx.x % 32) == 0) {
+    atomicAdd(&res[0], val);
   }
 }
 
-static __global__ void c_sum2(const float* const __restrict__ x, const long N, double* const __restrict__ res)
+static __global__ void c_sum2(const float* const __restrict__ x, const long long N, double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    const double v = x[tid];
-    atomicAdd(&res[0], v * v);
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+
+  double val2 = 0.0;
+  for (long long i = start; i < N; i += incr) {
+    const double v = x[i];
+    val2 += v * v;
+  }
+
+  val2 += __shfl_xor_sync(~0, val2, 1);
+  val2 += __shfl_xor_sync(~0, val2, 2);
+  val2 += __shfl_xor_sync(~0, val2, 4);
+  val2 += __shfl_xor_sync(~0, val2, 8);
+  val2 += __shfl_xor_sync(~0, val2, 16);
+
+  if ((threadIdx.x % 32) == 0) {
+    atomicAdd(&res[0], val2);
   }
 }
 
-static __global__ void c_sum_sum2(const float* const __restrict__ x, const long N, double* const __restrict__ res)
+static __global__ void c_sum_sum2(const float* const __restrict__ x, const long long N, double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    const double v = x[tid];
-    atomicAdd(&res[0], v);
-    atomicAdd(&res[1], v * v);
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+
+  double val = 0.0;
+  double val2 = 0.0;
+  for (long long i = start; i < N; i += incr) {
+    const double v = x[i];
+    val += v;
+    val2 += v * v;
+  }
+
+  val += __shfl_xor_sync(~0, val, 1);
+  val2 += __shfl_xor_sync(~0, val2, 1);
+  val += __shfl_xor_sync(~0, val, 2);
+  val2 += __shfl_xor_sync(~0, val2, 2);
+  val += __shfl_xor_sync(~0, val, 4);
+  val2 += __shfl_xor_sync(~0, val2, 4);
+  val += __shfl_xor_sync(~0, val, 8);
+  val2 += __shfl_xor_sync(~0, val2, 8);
+  val += __shfl_xor_sync(~0, val, 16);
+  val2 += __shfl_xor_sync(~0, val2, 16);
+
+  if ((threadIdx.x % 32) == 0) {
+    atomicAdd(&res[0], val);
+    atomicAdd(&res[1], val2);
   }
 }
 
-static __global__ void c_wsum_sum(const float* const __restrict__ x, const long N, const float* const __restrict__ w, double* const __restrict__ res)
+static __global__ void c_wsum_sum(const float* const __restrict__ x, const long long N, const float* const __restrict__ w, double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    const double v = x[tid];
-    const double u = w[tid];
-    atomicAdd(&res[0], v * u);
-    atomicAdd(&res[1], u);
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+
+  double val = 0.0;
+  double val2 = 0.0;
+  for (long long i = start; i < N; i += incr) {
+    const double v = x[i];
+    const double u = w[i];
+    val += v * u;
+    val2 += u;
+  }
+
+  val += __shfl_xor_sync(~0, val, 1);
+  val2 += __shfl_xor_sync(~0, val2, 1);
+  val += __shfl_xor_sync(~0, val, 2);
+  val2 += __shfl_xor_sync(~0, val2, 2);
+  val += __shfl_xor_sync(~0, val, 4);
+  val2 += __shfl_xor_sync(~0, val2, 4);
+  val += __shfl_xor_sync(~0, val, 8);
+  val2 += __shfl_xor_sync(~0, val2, 8);
+  val += __shfl_xor_sync(~0, val, 16);
+  val2 += __shfl_xor_sync(~0, val2, 16);
+
+  if ((threadIdx.x % 32) == 0) {
+    atomicAdd(&res[0], val);
+    atomicAdd(&res[1], val2);
   }
 }
 
@@ -71,6 +137,18 @@ static __global__ void c_mul_map(float* const __restrict__ x, const long N, cons
   const long tid = blockIdx.x * (long)TPB + threadIdx.x;
   if (tid < N) {
     x[tid] = (float)(res[1] * (double)x[tid]);
+  }
+}
+
+static inline void setBlocks(int& blocks)
+{
+  if (blocks == 0) {
+    cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, 0);
+    if ((deviceProp.major == 9999) && (deviceProp.minor == 9999)) {fprintf(stderr, "ERROR: no CUDA capable device detected\n\n"); exit(-1);}
+    const int SMs = deviceProp.multiProcessorCount;
+    const int mTpSM = deviceProp.maxThreadsPerMultiProcessor;
+    blocks = SMs * (mTpSM / TPB);
   }
 }
 
@@ -110,13 +188,15 @@ static __global__ void cme_map(float* const __restrict__ x, const long N, const 
   }
 }
 
-static inline void conserve_mass_energy(float* const __restrict__ d_x, const long N, const double M0, const double S0)
+static inline void conserve_mass_energy(float* const __restrict__ d_x, const long N, const double M0, const double S0, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   cudaMalloc(&d_res, 5 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
 
-  c_sum_sum2<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_sum_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   cme_mean_var<<<1, 1>>>(N, M0, S0, d_res);
   cme_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
 
@@ -144,13 +224,15 @@ static __global__ void cl_map(float* const __restrict__ x, const long N, const d
   }
 }
 
-static inline void conserve_linear(float* const __restrict__ d_x, const long N, const double L0)
+static inline void conserve_linear(float* const __restrict__ d_x, const long N, const double L0, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   cudaMalloc(&d_res, 2 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
 
-  c_sum<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_sum<<<blocks, TPB>>>(d_x, N, d_res);
   cl_b<<<1, 1>>>(N, L0, d_res);
   cl_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
 
@@ -182,15 +264,17 @@ static __global__ void clw_map(float* const __restrict__ x, const long N, const 
   }
 }
 
-static inline void conserve_linear_w(float* const __restrict__ d_x, const long N, const double L0, const float* const __restrict__ d_w)
+static inline void conserve_linear_w(float* const __restrict__ d_x, const long N, const double L0, const float* const __restrict__ d_w, int blocks = 0)
 {
   if (!d_w) { conserve_linear(d_x, N, L0); return; }
+
+  setBlocks(blocks);
 
   double* d_res;
   cudaMalloc(&d_res, 3 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
 
-  c_wsum_sum<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_w, d_res);
+  c_wsum_sum<<<blocks, TPB>>>(d_x, N, d_w, d_res);
   clw_b<<<1, 1>>>(L0, d_res);
   clw_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
 
@@ -217,13 +301,15 @@ static __global__ void ce_a(const long N, const double S0, double* const __restr
   res[1] = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0;
 }
 
-static inline void conserve_energy(float* const __restrict__ d_x, const long N, const double S0)
+static inline void conserve_energy(float* const __restrict__ d_x, const long N, const double S0, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   cudaMalloc(&d_res, 2 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
 
-  c_sum2<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   ce_a<<<1, 1>>>(N, S0, d_res);
   c_mul_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
 
@@ -282,13 +368,15 @@ static __global__ void csm_a(const long N, const double L0, double* const __rest
   res[1] = (s != 0.0) ? (L0 / s) : 1.0;
 }
 
-static inline void conserve_scale_mass(float* const __restrict__ d_x, const long N, const double L0)
+static inline void conserve_scale_mass(float* const __restrict__ d_x, const long N, const double L0, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   cudaMalloc(&d_res, 2 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
 
-  c_sum<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_sum<<<blocks, TPB>>>(d_x, N, d_res);
   csm_a<<<1, 1>>>(N, L0, d_res);
   c_mul_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
 
@@ -312,24 +400,42 @@ static __global__ void cmem_mean_var(const long N, const double M0, const double
   res[5] = mean0 - a * mean;
 }
 
-static __global__ void cmem_max(const float* const __restrict__ x, const long N, double* const  __restrict__ res)
+static __global__ void cmem_max(const float* const __restrict__ x, const long long N, double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    const double d = fabs(res[4] * ((double)x[tid] - res[3]) + res[5]);
-    atomicMax((long long*)&res[2], *((long long*)&d));  // hack, but works for positive doubles
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+
+  const double r3 = res[3];
+  const double r4 = res[4];
+  const double r5 = res[5];
+  double val = 0.0;
+  for (long long i = start; i < N; i += incr) {
+    const double d = fabs(r4 * ((double)x[i] - r3) + r5);
+    val = max(val, d);
+  }
+
+  val = max(val, __shfl_xor_sync(~0, val, 1));
+  val = max(val, __shfl_xor_sync(~0, val, 2));
+  val = max(val, __shfl_xor_sync(~0, val, 4));
+  val = max(val, __shfl_xor_sync(~0, val, 8));
+  val = max(val, __shfl_xor_sync(~0, val, 16));
+
+  if ((threadIdx.x % 32) == 0) {
+    atomicMax((long long*)&res[2], *((long long*)&val));  // hack, but works for positive doubles
   }
 }
 
-static inline double conserve_mass_energy_maxdisp(const float* const __restrict__ d_x, const long N, const double M0, const double S0)
+static inline double conserve_mass_energy_maxdisp(const float* const __restrict__ d_x, const long N, const double M0, const double S0, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   cudaMalloc(&d_res, 6 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 3 * sizeof(double));
 
-  c_sum_sum2<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_sum_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   cmem_mean_var<<<1, 1>>>(N, M0, S0, d_res);
-  cmem_max<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  cmem_max<<<blocks, TPB>>>(d_x, N, d_res);
 
   double md;
   cudaMemcpy(&md, &d_res[2], sizeof(double), cudaMemcpyDeviceToHost);
@@ -350,13 +456,15 @@ static __global__ void cse_a(const long N, const double S0, double* const  __res
   res[1] = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0;
 }
 
-static inline void conserve_scale_energy(float* const __restrict__ d_x, const long N, const double S0)
+static inline void conserve_scale_energy(float* const __restrict__ d_x, const long N, const double S0, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   cudaMalloc(&d_res, 2 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
 
-  c_sum2<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   cse_a<<<1, 1>>>(N, S0, d_res);
   c_mul_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
 
@@ -409,13 +517,15 @@ static inline void conserve_apply_affine(float* const d_x, const long N, const d
 /* Encoder, mass+energy -> (a,b): a = sqrt(var0/var), b = mean0 - a*mean.
    C_i = mean0 + a(xhat_i - mean) = a*xhat_i + b, identical to conserve_mass_energy. */
 
-static inline void conserve_mass_energy_params(const float* const __restrict__ d_x, const long N, const double M0, const double S0, double& a_out, double& b_out)
+static inline void conserve_mass_energy_params(const float* const __restrict__ d_x, const long N, const double M0, const double S0, double& a_out, double& b_out, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   cudaMalloc(&d_res, 5 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
 
-  c_sum_sum2<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_sum_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   cme_mean_var<<<1, 1>>>(N, M0, S0, d_res);
 
   double res [5];
@@ -428,14 +538,16 @@ static inline void conserve_mass_energy_params(const float* const __restrict__ d
 
 /* Encoder, mass or weighted momentum -> (1,b). w==NULL => unweighted mass. */
 
-static inline void conserve_linear_params(float* const __restrict__ d_x, const long N, const double L0, const float* const __restrict__ d_w, double& a_out, double& b_out)
+static inline void conserve_linear_params(const float* const __restrict__ d_x, const long N, const double L0, const float* const __restrict__ d_w, double& a_out, double& b_out, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   if (d_w) {
     cudaMalloc(&d_res, 3 * sizeof(double));
     cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
 
-    c_wsum_sum<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_w, d_res);
+    c_wsum_sum<<<blocks, TPB>>>(d_x, N, d_w, d_res);
     clw_b<<<1, 1>>>(L0, d_res);
 
     cudaMemcpy(&b_out, &d_res[2], sizeof(double), cudaMemcpyDeviceToHost);
@@ -443,7 +555,7 @@ static inline void conserve_linear_params(float* const __restrict__ d_x, const l
     cudaMalloc(&d_res, 2 * sizeof(double));
     cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
 
-    c_sum<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+    c_sum<<<blocks, TPB>>>(d_x, N, d_res);
     cl_b<<<1, 1>>>(N, L0, d_res);
 
     cudaMemcpy(&b_out, &d_res[1], sizeof(double), cudaMemcpyDeviceToHost);
@@ -455,13 +567,15 @@ static inline void conserve_linear_params(float* const __restrict__ d_x, const l
 
 /* Encoder, energy only -> (a,0): a = sqrt(S0 / sum xhat^2). */
 
-static inline void conserve_energy_params(float* const __restrict__ d_x, const long N, const double S0, double& a_out, double& b_out)
+static inline void conserve_energy_params(const float* const __restrict__ d_x, const long N, const double S0, double& a_out, double& b_out, int blocks = 0)
 {
+  setBlocks(blocks);
+
   double* d_res;
   cudaMalloc(&d_res, 2 * sizeof(double));
   cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
 
-  c_sum2<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   ce_a<<<1, 1>>>(N, S0, d_res);
 
   cudaMemcpy(&a_out, &d_res[1], sizeof(double), cudaMemcpyDeviceToHost);

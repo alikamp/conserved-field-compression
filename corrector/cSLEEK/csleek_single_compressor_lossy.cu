@@ -78,7 +78,7 @@ struct GPUTimer
 #endif
 */
 
-
+/*
 static inline void get_correction_params(const int mode, const int blocks, const float* const __restrict__ d_input, const long long N, double& a_out, double& b_out)
 {
   switch (mode) {
@@ -117,6 +117,52 @@ static inline void get_correction_params(const int mode, const int blocks, const
         double res [2];
         cudaMemcpy(res, d_res, 2 * sizeof(double), cudaMemcpyDeviceToHost);
         conserve_mass_energy_params(d_input, N, res[0], res[1], a_out, b_out, blocks);
+        cudaFree(d_res);
+        break;
+      }
+  }
+}
+*/
+
+static inline void get_params(const int mode, const int blocks, const float* const __restrict__ d_input, const long long N, double& p1, double& p2)
+{
+  switch (mode) {
+    case 0:
+      break;
+    case CONS_MASS:
+      {
+        double* d_res;
+        cudaMalloc(&d_res, 1 * sizeof(double));
+        cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
+        c_sum<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute L0
+        //double res [1];
+        cudaMemcpy(&p1, d_res, 1 * sizeof(double), cudaMemcpyDeviceToHost);
+        //conserve_linear_params(d_input, N, res[0], NULL, a_out, b_out, blocks);
+        cudaFree(d_res);
+        break;
+      }
+    case CONS_ENERGY:
+      {
+        double* d_res;
+        cudaMalloc(&d_res, 1 * sizeof(double));
+        cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
+        c_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute S0
+        //double res [1];
+        cudaMemcpy(&p2, d_res, 1 * sizeof(double), cudaMemcpyDeviceToHost);
+        //conserve_energy_params(d_input, N, res[0], a_out, b_out, blocks);
+        cudaFree(d_res);
+        break;
+      }
+    case (CONS_MASS | CONS_ENERGY):
+      {
+        double* d_res;
+        cudaMalloc(&d_res, 2 * sizeof(double));
+        cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
+        c_sum_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute M0 and S0
+        //double res [2];
+        cudaMemcpy(&p1, &d_res[0], 1 * sizeof(double), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&p2, &d_res[1], 1 * sizeof(double), cudaMemcpyDeviceToHost);
+        //conserve_mass_energy_params(d_input, N, res[0], res[1], a_out, b_out, blocks);
         cudaFree(d_res);
         break;
       }
@@ -199,21 +245,7 @@ int main(int argc, char* argv [])
   const int blocks = sleek_thread_blocks();
   const long long N = insize / sizeof(float);
 
-  int extra_bytes = 0;
-  switch (mode) {
-    case 0:
-      extra_bytes = 0 * sizeof(double);
-      break;
-    case CONS_MASS:
-      extra_bytes = 1 * sizeof(double);
-      break;
-    case CONS_ENERGY:
-      extra_bytes = 1 * sizeof(double);
-      break;
-    case (CONS_MASS | CONS_ENERGY):
-      extra_bytes = 2 * sizeof(double);
-      break;
-  }
+  const int extra_bytes = __builtin_popcount(mode) * sizeof(double);
 
   #if defined(ARTIFACT)
 
@@ -224,15 +256,15 @@ int main(int argc, char* argv [])
     const auto eb_info = sleek_error_bound(eb);
 
     // warm up
-    double a, b;  // correction parameters
-    get_correction_params(mode, blocks, d_input, N, a, b);
+    double p1, p2;  // correction parameters
+    get_params(mode, blocks, d_input, N, p1, p1);
     sleek_compress_gpu(blocks, eb_info, d_input, num_elements, d_encoded, d_encsize);
     cudaDeviceSynchronize();
     CheckCuda(__LINE__);
 
     GPUTimer dtimer;
     dtimer.start();
-    get_correction_params(mode, blocks, d_input, N, a, b);
+    get_params(mode, blocks, d_input, N, p1, p2);
     const double corrtime = dtimer.stop();
     dtimer.start();
     sleek_compress_gpu(blocks, eb_info, d_input, num_elements, d_encoded, d_encsize);
@@ -268,8 +300,8 @@ int main(int argc, char* argv [])
     const float eb = std::stof(argv[3]);
     const auto eb_info = sleek_error_bound(eb);
 
-    double a, b;  // correction parameters
-    get_correction_params(mode, blocks, d_input, N, a, b);
+    double p1, p2;  // correction parameters
+    get_params(mode, blocks, d_input, N, p1, p2);
     sleek_compress_gpu(blocks, eb_info, d_input, num_elements, d_encoded, d_encsize);
     long long dencsize = 0;
     cudaMemcpy(&dencsize, d_encsize, sizeof(long long), cudaMemcpyDeviceToHost);
@@ -287,21 +319,8 @@ int main(int argc, char* argv [])
   // write to file
   FILE* const fout = fopen(argv[2], "wb");
   fwrite(dencoded, 1, dencsize, fout);
-  switch (mode) {
-    case 0:
-      // write nothing else
-      break;
-    case CONS_MASS:
-      fwrite(&b, 1, sizeof(double), fout);
-      break;
-    case CONS_ENERGY:
-      fwrite(&a, 1, sizeof(double), fout);
-      break;
-    case (CONS_MASS | CONS_ENERGY):
-      fwrite(&a, 1, sizeof(double), fout);
-      fwrite(&b, 1, sizeof(double), fout);
-      break;
-  }
+  if (mode & CONS_MASS) fwrite(&p1, 1, sizeof(double), fout);
+  if (mode & CONS_ENERGY) fwrite(&p2, 1, sizeof(double), fout);
   fclose(fout);
 
   // clean up GPU memory

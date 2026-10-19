@@ -145,7 +145,7 @@ static inline void setBlocks(int& blocks)
   if (blocks == 0) {
     cudaDeviceProp deviceProp;
     cudaGetDeviceProperties(&deviceProp, 0);
-    if ((deviceProp.major == 9999) && (deviceProp.minor == 9999)) {fprintf(stderr, "ERROR: no CUDA capable device detected\n\n"); exit(-1);}
+    //if ((deviceProp.major == 9999) && (deviceProp.minor == 9999)) {fprintf(stderr, "ERROR: no CUDA capable device detected\n\n"); exit(-1);}
     const int SMs = deviceProp.multiProcessorCount;
     const int mTpSM = deviceProp.maxThreadsPerMultiProcessor;
     blocks = SMs * (mTpSM / TPB);
@@ -321,13 +321,13 @@ static inline void conserve_energy(float* const __restrict__ d_x, const long N, 
    w:     optional weight field for the linear invariant (momentum: w=density;
           NULL = unweighted, i.e. mass). Ignored for the energy-only path. */
 
-static inline void conserve_apply(float* const __restrict__ d_x, const long N, const int which, const double M0, const double S0, const float* const d_w)
+static inline void conserve_apply(float* const __restrict__ d_x, const long N, const int which, const double M0, const double S0, const float* const d_w, int blocks = 0)
 {
   const int want_m = ((which & CONS_MASS) != 0);
   const int want_e = ((which & CONS_ENERGY) != 0);
-  if (want_m && want_e) { conserve_mass_energy(d_x, N, M0, S0); return; }  /* offset + scale */
-  if (want_m) { conserve_linear_w(d_x, N, M0, d_w); return; }  /* mass/momentum: (weighted) offset */
-  if (want_e) { conserve_energy(d_x, N, S0); }  /* energy only: global scale */
+  if (want_m && want_e) { conserve_mass_energy(d_x, N, M0, S0, blocks); return; }  /* offset + scale */
+  if (want_m) { conserve_linear_w(d_x, N, M0, d_w, blocks); return; }  /* mass/momentum: (weighted) offset */
+  if (want_e) { conserve_energy(d_x, N, S0, blocks); }  /* energy only: global scale */
 }
 
 /* ===========================================================================

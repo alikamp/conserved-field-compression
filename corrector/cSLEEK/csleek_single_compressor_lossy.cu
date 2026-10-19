@@ -41,12 +41,15 @@ Sponsor: This material is based upon work supported by the U.S. National Science
 */
 
 
-#include "sleek_lossy_gpu.h"
-#include "../conserve_cuda.h"
 #include <string>
 #include <cmath>
 #include <cassert>
 #include <cuda.h>
+#include "sleek_lossy_gpu.h"
+#include "../conserve_cuda.h"
+
+
+static const float EBfactor = 0.9f;
 
 
 struct GPUTimer
@@ -78,121 +81,26 @@ struct GPUTimer
 #endif
 */
 
-/*
-static inline void get_correction_params(const int mode, const int blocks, const float* const __restrict__ d_input, const long long N, double& a_out, double& b_out)
+static inline void get_conservation_params(const int mode, const int blocks, const float* const __restrict__ d_input, const long long N, double& p1, double& p2)
 {
-  switch (mode) {
-    case 0:
-      break;
-    case CONS_MASS:
-      {
-        double* d_res;
-        cudaMalloc(&d_res, 1 * sizeof(double));
-        cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
-        c_sum<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute L0
-        double res [1];
-        cudaMemcpy(res, d_res, 1 * sizeof(double), cudaMemcpyDeviceToHost);
-        conserve_linear_params(d_input, N, res[0], NULL, a_out, b_out, blocks);
-        cudaFree(d_res);
-        break;
-      }
-    case CONS_ENERGY:
-      {
-        double* d_res;
-        cudaMalloc(&d_res, 1 * sizeof(double));
-        cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
-        c_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute S0
-        double res [1];
-        cudaMemcpy(res, d_res, 1 * sizeof(double), cudaMemcpyDeviceToHost);
-        conserve_energy_params(d_input, N, res[0], a_out, b_out, blocks);
-        cudaFree(d_res);
-        break;
-      }
-    case (CONS_MASS | CONS_ENERGY):
-      {
-        double* d_res;
-        cudaMalloc(&d_res, 2 * sizeof(double));
-        cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
-        c_sum_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute M0 and S0
-        double res [2];
-        cudaMemcpy(res, d_res, 2 * sizeof(double), cudaMemcpyDeviceToHost);
-        conserve_mass_energy_params(d_input, N, res[0], res[1], a_out, b_out, blocks);
-        cudaFree(d_res);
-        break;
-      }
+  if (mode != 0) {
+    const int extra_bytes = __builtin_popcount(mode) * sizeof(double);
+    double* d_res;
+    cudaMalloc(&d_res, extra_bytes);
+    cudaMemsetAsync(d_res, 0, extra_bytes);
+    if (mode == CONS_MASS) {
+      c_sum<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute L0
+      cudaMemcpy(&p1, d_res, sizeof(double), cudaMemcpyDeviceToHost);
+    } else if (mode == CONS_ENERGY) {
+      c_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute S0
+      cudaMemcpy(&p2, d_res, sizeof(double), cudaMemcpyDeviceToHost);
+    } else {  // mode == (CONS_MASS | CONS_ENERGY)
+      c_sum_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute M0 and S0
+      cudaMemcpy(&p1, &d_res[0], sizeof(double), cudaMemcpyDeviceToHost);
+      cudaMemcpy(&p2, &d_res[1], sizeof(double), cudaMemcpyDeviceToHost);
+    }
+    cudaFree(d_res);
   }
-}
-*/
-
-static inline void get_params(const int mode, const int blocks, const float* const __restrict__ d_input, const long long N, double& p1, double& p2)
-{
-  switch (mode) {
-    case 0:
-      break;
-    case CONS_MASS:
-      {
-        double* d_res;
-        cudaMalloc(&d_res, 1 * sizeof(double));
-        cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
-        c_sum<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute L0
-        //double res [1];
-        cudaMemcpy(&p1, d_res, 1 * sizeof(double), cudaMemcpyDeviceToHost);
-        //conserve_linear_params(d_input, N, res[0], NULL, a_out, b_out, blocks);
-        cudaFree(d_res);
-        break;
-      }
-    case CONS_ENERGY:
-      {
-        double* d_res;
-        cudaMalloc(&d_res, 1 * sizeof(double));
-        cudaMemsetAsync(d_res, 0, 1 * sizeof(double));
-        c_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute S0
-        //double res [1];
-        cudaMemcpy(&p2, d_res, 1 * sizeof(double), cudaMemcpyDeviceToHost);
-        //conserve_energy_params(d_input, N, res[0], a_out, b_out, blocks);
-        cudaFree(d_res);
-        break;
-      }
-    case (CONS_MASS | CONS_ENERGY):
-      {
-        double* d_res;
-        cudaMalloc(&d_res, 2 * sizeof(double));
-        cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
-        c_sum_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute M0 and S0
-        //double res [2];
-        cudaMemcpy(&p1, &d_res[0], 1 * sizeof(double), cudaMemcpyDeviceToHost);
-        cudaMemcpy(&p2, &d_res[1], 1 * sizeof(double), cudaMemcpyDeviceToHost);
-        //conserve_mass_energy_params(d_input, N, res[0], res[1], a_out, b_out, blocks);
-        cudaFree(d_res);
-        break;
-      }
-  }
-
-/*
-  double* d_res;
-  cudaMalloc(&d_res, 2 * sizeof(double));
-  cudaMemsetAsync(d_res, 0, 2 * sizeof(double));
-
-    GPUTimer dtimer;
-    dtimer.start();
-  c_sum_sum2<<<blocks, SLEEK_TPB>>>(d_input, N, d_res);  // compute M0 and S0
-    double runtime = dtimer.stop();
-    printf("+time: %.6f s\n", runtime);
-    double throughput = N * 0.000000004 / runtime;
-    printf("+throughput: %8.3f Gbytes/s\n", throughput);
-
-  double res [2];
-  cudaMemcpy(res, d_res, 2 * sizeof(double), cudaMemcpyDeviceToHost);
-
-    dtimer.start();
-  conserve_mass_energy_params(d_input, N, res[0], res[1], a_out, b_out, blocks);
-    runtime = dtimer.stop();
-    printf("-time: %.6f s\n", runtime);
-    throughput = N * 0.000000004 / runtime;
-    printf("-throughput: %8.3f Gbytes/s\n", throughput);
-
-  cudaFree(d_res);
-*/
 }
 
 
@@ -253,19 +161,19 @@ int main(int argc, char* argv [])
 //    const float parameter = std::stof(argv[3]);
 //    const float eb = computeNOAeb(input, num_elements, parameter);
     const float eb = std::stof(argv[3]);
-    const auto eb_info = sleek_error_bound(eb);
+    const auto eb_info = sleek_error_bound(eb * EBfactor);
 
     // warm up
-    double p1, p2;  // correction parameters
-    get_params(mode, blocks, d_input, N, p1, p1);
+    double p1, p2;  // conservation parameters
+    get_conservation_params(mode, blocks, d_input, N, p1, p1);
     sleek_compress_gpu(blocks, eb_info, d_input, num_elements, d_encoded, d_encsize);
     cudaDeviceSynchronize();
     CheckCuda(__LINE__);
 
     GPUTimer dtimer;
     dtimer.start();
-    get_params(mode, blocks, d_input, N, p1, p2);
-    const double corrtime = dtimer.stop();
+    get_conservation_params(mode, blocks, d_input, N, p1, p2);
+    const double constime = dtimer.stop();
     dtimer.start();
     sleek_compress_gpu(blocks, eb_info, d_input, num_elements, d_encoded, d_encsize);
     const double runtime = dtimer.stop();
@@ -281,27 +189,31 @@ int main(int argc, char* argv [])
     const float CR = (100.0 * (dencsize + extra_bytes)) / insize;
     printf("ratio: %6.2f%% %7.3fx\n", CR, 100.0 / CR);
 
-    printf("cpreproc time: %.6f s\n", corrtime);
-    double throughput = insize * 0.000000001 / corrtime;
-    printf("cpreproc throughput: %8.3f Gbytes/s\n", throughput);
+    if (mode != 0) {
+      printf("cpreproc time: %.6f s\n", constime);
+      const double throughput = insize * 0.000000001 / constime;
+      printf("cpreproc throughput: %8.3f Gbytes/s\n", throughput);
+    }
 
     printf("encoding time: %.6f s\n", runtime);
-    throughput = insize * 0.000000001 / runtime;
+    const double throughput = insize * 0.000000001 / runtime;
     printf("encoding throughput: %8.3f Gbytes/s\n", throughput);
 
-    printf("over-all time: %.6f s\n", corrtime + runtime);
-    throughput = insize * 0.000000001 / (corrtime + runtime);
-    printf("over-all throughput: %8.3f Gbytes/s\n", throughput);
+    if (mode != 0) {
+      printf("over-all time: %.6f s\n", constime + runtime);
+      const double throughput = insize * 0.000000001 / (constime + runtime);
+      printf("over-all throughput: %8.3f Gbytes/s\n", throughput);
+    }
     CheckCuda(__LINE__);
 
   #else
 
     // eb variables
     const float eb = std::stof(argv[3]);
-    const auto eb_info = sleek_error_bound(eb);
+    const auto eb_info = sleek_error_bound(eb * EBfactor);
 
-    double p1, p2;  // correction parameters
-    get_params(mode, blocks, d_input, N, p1, p2);
+    double p1, p2;  // conservation parameters
+    get_conservation_params(mode, blocks, d_input, N, p1, p2);
     sleek_compress_gpu(blocks, eb_info, d_input, num_elements, d_encoded, d_encsize);
     long long dencsize = 0;
     cudaMemcpy(&dencsize, d_encsize, sizeof(long long), cudaMemcpyDeviceToHost);

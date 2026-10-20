@@ -14,6 +14,7 @@ backbone harness for the IWBDR-6 storage-case study.
 | `conserve_test.cpp` | Self-contained correctness test for `conserve.h` (invariants restored to ~1e-10 relative; pointwise bound preserved). |
 | `CORRECTOR_SPEC.md` / `.pdf` | Integration spec: the three integration points, uniform bound-tightening `b' = (1-eps)*b`, the GPU mapping (two reductions + one fused multiply-add), and a verification checklist. |
 | `rd_full.py` | Systematic storage-case rate-distortion harness (E1/E2): real coded ratios per codec with mass/energy drift layer-on/off, pointwise-bound check, PSNR. ZFP works anywhere; SZ3 / MGARD / ZFP-ROUND_FIRST via libpressio. |
+| `sz3_adapter.py` | SZ3 for the harness via pip `hdf5plugin` (no libpressio/conda): `SZ3` adapter, bound-safe paper runs (`study_tight`), and ratio cost of the 10% headroom (`cr_impact`). `pip install h5py hdf5plugin zfpy`; `python sz3_adapter.py field.npy name`. |
 | `rd_full_colab.txt` | Colab runner for the backbone sweep on real SDRBench data (ZFP immediately; libpressio cells for the rest). |
 | `run_sdrbench_colab.txt` | Fetches the SDRBench Hurricane ISABEL fields on Colab. |
 | `fig_backbone.py` | Regenerates the dimensionality figure (ZFP on ISABEL, 1D/2D/3D, raw vs corrected). |
@@ -31,6 +32,8 @@ pip install zfpy numpy
 python rd_full.py
 
 # Real data: run rd_full.py field.npy on an SDRBench field, or use the Colab runner.
+# SZ3 + ZFP paper runs (ratio, bound, drift, headroom cost):
+python sz3_adapter.py field.npy name
 ```
 
 ## Invariant selection

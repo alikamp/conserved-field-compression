@@ -25,6 +25,7 @@
 #ifndef CONSERVE_H
 #define CONSERVE_H
 #include <math.h>
+#include <stdlib.h>
 
 /* OpenMP (CPU parallelism): active only when compiled with -fopenmp; otherwise
    CONS_OMP expands to nothing and every loop runs serially, unchanged. */
@@ -293,6 +294,138 @@ static inline void conserve_energy_params(const float* x, long N, double S0,
     CONS_OMP(omp parallel for reduction(+:s2))
     for (long i = 0; i < N; i++) { double v = x[i]; s2 += v*v; }
     *a_out = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0; *b_out = 0.0;
+}
+
+/* ===========================================================================
+   CAPPED CORRECTION -- robust to heavy-tailed fields (recommended for energy
+   and mass+energy).  The plain mass+energy map moves each value by an amount
+   proportional to its distance from the mean, so on fields whose values span
+   many orders of magnitude (e.g. NYX temperature) the extreme values move the
+   most and can exceed the error bound by several times. The capped version
+   moves each value by
+        alpha + beta * clip(x - mu0, -c, c)
+   i.e. like the plain map for ordinary values, but by at most a fixed amount
+   for extreme ones. alpha and beta are solved in closed form so mass and energy
+   are exact. With a bound-filling codec, compress at 0.8*eps (20% headroom).
+
+   Encoder (has the original x):
+       mu0 = M0/N,  c = conserve_cap_from_original(x, N, mu0, 97.0)
+   Two-pass path (codec does NOT decompress at encode, e.g. SLEEK):
+       store M0, S0, c   ->  decoder: conserve_mass_energy_capped(x, N, M0, S0, c)
+       energy only: store S0, mu0, c -> decoder: conserve_energy_capped(x, N, S0, mu0, c)
+   Precompute path (codec decompresses at encode, e.g. PFPL):
+       encoder: conserve_mass_energy_capped_params(xhat, N, M0, S0, c, &a, &b, &c_used)
+       store a, b, mu0, c_used -> decoder: conserve_apply_capped(x, N, a, b, mu0, c_used)
+   If no exact solution exists at cap c (rare), the cap is doubled until one
+   does; with no cap the map is affine and always solvable for mass+energy.
+--------------------------------------------------------------------------- */
+
+/* q-th percentile of |x - mu0| over the ORIGINAL field (quickselect on a copy). */
+static inline double conserve_cap_from_original(const float* x, long N, double mu0, double q)
+{
+    float* d = (float*)malloc(sizeof(float) * (size_t)N);
+    if (!d) return INFINITY;                      /* no memory: no cap (plain map) */
+    for (long i = 0; i < N; i++) d[i] = (float)fabs((double)x[i] - mu0);
+    long k = (long)(q / 100.0 * (double)(N - 1)), lo = 0, hi = N - 1;
+    while (lo < hi) {                             /* quickselect: k-th smallest */
+        float p = d[(lo + hi) / 2]; long i = lo, j = hi;
+        while (i <= j) {
+            while (d[i] < p) i++;
+            while (d[j] > p) j--;
+            if (i <= j) { float t = d[i]; d[i] = d[j]; d[j] = t; i++; j--; }
+        }
+        if (k <= j) hi = j; else if (k >= i) lo = i; else break;
+    }
+    double c = d[k]; free(d);
+    return (c > 0.0) ? c : INFINITY;
+}
+
+/* Solve for (alpha, beta) at cap c. with_mass=0 -> energy only (alpha = 0).
+   Returns 1 if an exact solution exists. One reduction pass over x. */
+static inline int conserve__capped_solve(const float* x, long N, double M0, double S0,
+                                         double mu0, double c, int with_mass,
+                                         double* a_out, double* b_out)
+{
+    double S1 = 0, S2 = 0, G1 = 0, G2 = 0, XG = 0;
+    CONS_OMP(omp parallel for reduction(+:S1,S2,G1,G2,XG))
+    for (long i = 0; i < N; i++) {
+        double v = x[i], g = v - mu0;
+        if (g > c) g = c; else if (g < -c) g = -c;
+        S1 += v; S2 += v * v; G1 += g; G2 += g * g; XG += v * g;
+    }
+    double A, B, C, D = 0.0;
+    if (with_mass) { D = M0 - S1; A = G2 - G1 * G1 / N; B = 2 * (XG - S1 * G1 / N);
+                     C = S2 + 2 * S1 * D / N + D * D / N - S0; }
+    else           { A = G2; B = 2 * XG; C = S2 - S0; }
+    double disc = B * B - 4 * A * C;
+    if (A <= 0.0 || disc < 0.0) return 0;
+    double r1 = (-B + sqrt(disc)) / (2 * A), r2 = (-B - sqrt(disc)) / (2 * A);
+    double b = (fabs(r1) < fabs(r2)) ? r1 : r2;   /* smallest change */
+    *b_out = b; *a_out = with_mass ? (D - b * G1) / N : 0.0;
+    return 1;
+}
+
+/* Decoder, one pass: x <- x + a + b*clip(x - mu0, -c, c). */
+static inline void conserve_apply_capped(float* x, long N, double a, double b, double mu0, double c)
+{
+    CONS_OMP(omp parallel for)
+    for (long i = 0; i < N; i++) {
+        double g = (double)x[i] - mu0;
+        if (g > c) g = c; else if (g < -c) g = -c;
+        x[i] = (float)((double)x[i] + a + b * g);
+    }
+}
+
+/* Find (a,b) for mass+energy, doubling the cap if needed (last try: no cap,
+   always solvable). Returns 1 on success; the cap actually used goes in *c_used. */
+static inline int conserve_mass_energy_capped_params(const float* x, long N, double M0, double S0,
+                                                     double c, double* a_out, double* b_out, double* c_used)
+{
+    const double mu0 = M0 / (double)N;
+    for (int k = 0; k < 64; k++) {
+        if (k == 63) c = INFINITY;
+        if (conserve__capped_solve(x, N, M0, S0, mu0, c, 1, a_out, b_out)) { *c_used = c; return 1; }
+        c *= 2.0;
+    }
+    return 0;
+}
+
+/* Same for energy only (no mass constraint, a = 0). Returns 0 if unsolvable;
+   the caller then falls back to the plain global scale. */
+static inline int conserve_energy_capped_params(const float* x, long N, double S0, double mu0,
+                                                double c, double* a_out, double* b_out, double* c_used)
+{
+    for (int k = 0; k < 64; k++) {
+        if (k == 63) c = INFINITY;
+        if (conserve__capped_solve(x, N, 0.0, S0, mu0, c, 0, a_out, b_out)) { *c_used = c; return 1; }
+        c *= 2.0;
+    }
+    return 0;
+}
+
+/* Two-pass decoders (the codec stores the invariants and the cap). */
+static inline void conserve_mass_energy_capped(float* x, long N, double M0, double S0, double c)
+{
+    double a, b, cu;
+    if (conserve_mass_energy_capped_params(x, N, M0, S0, c, &a, &b, &cu))
+        conserve_apply_capped(x, N, a, b, M0 / (double)N, cu);
+    else
+        conserve_mass_energy(x, N, M0, S0);
+}
+
+static inline void conserve_energy_capped(float* x, long N, double S0, double mu0, double c)
+{
+    double a, b, cu;
+    if (conserve_energy_capped_params(x, N, S0, mu0, c, &a, &b, &cu)) {
+        conserve_apply_capped(x, N, a, b, mu0, cu);
+    } else {                                       /* last resort: global scale */
+        double s2 = 0.0;
+        CONS_OMP(omp parallel for reduction(+:s2))
+        for (long i = 0; i < N; i++) { double v = x[i]; s2 += v * v; }
+        const double sc = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0;
+        CONS_OMP(omp parallel for)
+        for (long i = 0; i < N; i++) x[i] = (float)(sc * (double)x[i]);
+    }
 }
 
 /* ---------------------------------------------------------------------------

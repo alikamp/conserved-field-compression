@@ -113,5 +113,45 @@ int main(){
   int ok = conserve_apply_rel(x,N,CONS_MASS|CONS_ENERGY,M0,S0);
   printf("[REL mass+energy          ] conserve_apply_rel returned %d (0 = correctly refused)\n", ok);
 
+  /* ---- 3. CAPPED correction on a heavy-tailed field, bound-filling codec ----
+     HARSH synthetic case: i.i.d. lognormal values (huge range, no spatial smoothness)
+     and errors that fill the bound like SZ3/SLEEK: xhat = x + U(-b', b').
+     Plain mass+energy (10% headroom) overshoots badly; the capped correction (20%
+     headroom) cuts the overshoot by ~15x, but at the loosest bound this worst case
+     still exceeds slightly -- a fixed headroom is not a guarantee for every field.
+     On the real ISABEL/NYX/Miranda data, capped + 20% headroom held the bound.
+     For a strict guarantee, verify at encode (decompress, check, retighten). */
+  for(long i=0;i<N;i++){ double u1=frand()+1e-12, u2=frand();
+    double z=sqrt(-2*log(u1))*cos(2*M_PI*u2); orig[i]=(float)exp(2.0*z); }   /* lognormal: huge range */
+  M0=0;S0=0; double mn=orig[0],mx=orig[0];
+  for(long i=0;i<N;i++){ M0+=orig[i]; S0+=(double)orig[i]*orig[i]; if(orig[i]<mn)mn=orig[i]; if(orig[i]>mx)mx=orig[i]; }
+  double cap=conserve_cap_from_original(orig,N,M0/N,97.0), mu0=M0/N;
+  float* y=new float[N]; float* z=new float[N];
+  const double fracs[2]={1e-2, 1e-3};
+  for(int t=0;t<2;t++){
+    double frac=fracs[t], bb=frac*(mx-mn);
+    /* plain, 10% headroom */
+    for(long i=0;i<N;i++) x[i]=(float)(orig[i]+urand(-0.9*bb,0.9*bb));
+    conserve_mass_energy(x,N,M0,S0);
+    double mp=0; for(long i=0;i<N;i++){ double d=fabs((double)x[i]-orig[i]); if(d>mp)mp=d; }
+    /* capped, 20% headroom: two-pass decode */
+    for(long i=0;i<N;i++){ x[i]=(float)(orig[i]+urand(-0.8*bb,0.8*bb)); y[i]=x[i]; z[i]=x[i]; }
+    conserve_mass_energy_capped(x,N,M0,S0,cap);
+    double mc=0,Mc=0,Sc=0; for(long i=0;i<N;i++){ double d=fabs((double)x[i]-orig[i]); if(d>mc)mc=d; Mc+=x[i]; Sc+=(double)x[i]*x[i]; }
+    /* capped, precompute path: params at encode, one-pass apply at decode == two-pass */
+    double a=0,b=0,cu=0; conserve_mass_energy_capped_params(y,N,M0,S0,cap,&a,&b,&cu);
+    conserve_apply_capped(y,N,a,b,mu0,cu);
+    double dd=0; for(long i=0;i<N;i++){ double d=fabs((double)y[i]-x[i]); if(d>dd)dd=d; }
+    /* capped, energy only */
+    conserve_energy_capped(z,N,S0,mu0,cap);
+    double me=0,Se=0; for(long i=0;i<N;i++){ double d=fabs((double)z[i]-orig[i]); if(d>me)me=d; Se+=(double)z[i]*z[i]; }
+    printf("[capped %.0e] plain M+E (10%%): max|C-x|/eps = %.2f %s | capped M+E (20%%): %.2f %s, drift E %.1e M %.1e | precompute == two-pass: %s | capped E only: %.2f %s, drift E %.1e\n",
+           frac, mp/bb, mp<=bb?"OK":"VIOLATES",
+           mc/bb, mc<=bb?"OK":"exceeds (harsh case)", fabs(Sc-S0)/S0, fabs(Mc-M0)/fabs(M0),
+           dd==0.0?"identical":"differs",
+           me/bb, me<=bb?"OK":"exceeds (harsh case)", fabs(Se-S0)/S0);
+  }
+  delete[] y; delete[] z;
+
   delete[] x; delete[] orig; return 0;
 }

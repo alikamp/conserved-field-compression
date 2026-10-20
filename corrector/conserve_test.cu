@@ -1,5 +1,5 @@
 /* conserve_test.cu -- correctness + bound-preservation test for conserve_cuda.h.
-   Builds with: nvcc -O3 -arch=sm_86 conserve_test.cu -o ctest_gpu && ./ctest_gpu
+   Builds with: nvcc -O3 -arch=sm_70 conserve_test.cu -o ctest_gpu && ./ctest_gpu
    Checks (1) invariants are restored, and (2) the corrected field respects the
    codec's pointwise bound in both ABS and REL modes. */
 

@@ -1,4 +1,5 @@
 // cSLEEK modification of SLEEK
+// nvcc -O3 -arch=sm_86 csleek_single_decompressor_lossy.cu -o cSLEEKdecom -DSTATS
 
 /*
 This file is part of SLEEK, a set of ultra-fast lossless and guaranteed-error-bounded lossy main-memory compression algorithms for floating-point data on GPUs.
@@ -63,7 +64,7 @@ struct GPUTimer
 };
 
 /*
-#if defined(ARTIFACT)
+#if defined(STATS)
   static inline float computeNOAeb(const float* const input, const long long size, const float eb_param)
   {
     float min = input[0], max = input[0];
@@ -87,7 +88,7 @@ int main(int argc, char* argv [])
   printf("GPU cSLEEK 1.0: single-precision lossy property-conserving decompressor\n");
   printf("Copyright 2026 Texas State University\n\n");
 
-  #if defined(ARTIFACT)
+  #if defined(STATS)
     if (argc != 6) {printf("USAGE: %s compressed_file_name decompressed_file_name error_bound mode original_file_name\n\n", argv[0]); return -1;}
   #else
     if (argc != 5) {printf("USAGE: %s compressed_file_name decompressed_file_name error_bound mode\n\n", argv[0]); return -1;}
@@ -141,7 +142,7 @@ int main(int argc, char* argv [])
 
   const int blocks = sleek_thread_blocks();
 
-  #if defined(ARTIFACT)
+  #if defined(STATS)
 
     // read original file
     FILE* const fin_orig = fopen(argv[5], "rb");

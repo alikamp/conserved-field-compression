@@ -1,4 +1,5 @@
 // cSLEEK modification of SLEEK
+// nvcc -O3 -arch=sm_86 csleek_single_compressor_lossy.cu -o cSLEEKcompr -DSTATS
 
 /*
 This file is part of SLEEK, a set of ultra-fast lossless and guaranteed-error-bounded lossy main-memory compression algorithms for floating-point data on GPUs.
@@ -62,7 +63,7 @@ struct GPUTimer
 };
 
 /*
-#if defined(ARTIFACT)
+#if defined(STATS)
   static inline float computeNOAeb(const float* const input, const long long size, const float eb_param)
   {
     float min = input[0], max = input[0];
@@ -155,7 +156,7 @@ int main(int argc, char* argv [])
 
   const int extra_bytes = __builtin_popcount(mode) * sizeof(double);
 
-  #if defined(ARTIFACT)
+  #if defined(STATS)
 
     // eb variables
 //    const float parameter = std::stof(argv[3]);

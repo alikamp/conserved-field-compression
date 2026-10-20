@@ -134,9 +134,11 @@ static __global__ void c_wsum_sum(const float* const __restrict__ x, const long 
 
 static __global__ void c_mul_map(float* const __restrict__ x, const long N, const double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    x[tid] = (float)(res[1] * (double)x[tid]);
+  const double r1 = res[1];
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+  for (long long i = start; i < N; i += incr) {
+    x[i] = (float)(r1 * (double)x[i]);
   }
 }
 
@@ -182,9 +184,13 @@ static __global__ void cme_mean_var(const long N, const double M0, const double 
 
 static __global__ void cme_map(float* const __restrict__ x, const long N, const double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    x[tid] = (float)(res[3] + res[4] * ((double)x[tid] - res[2]));
+  const double r2 = res[2];
+  const double r3 = res[3];
+  const double r4 = res[4];
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+  for (long long i = start; i < N; i += incr) {
+    x[i] = (float)(r3 + r4 * ((double)x[i] - r2));
   }
 }
 
@@ -198,7 +204,7 @@ static inline void conserve_mass_energy(float* const __restrict__ d_x, const lon
 
   c_sum_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   cme_mean_var<<<1, 1>>>(N, M0, S0, d_res);
-  cme_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  cme_map<<<blocks, TPB>>>(d_x, N, d_res);
 
   cudaFree(d_res);
 }
@@ -218,9 +224,11 @@ static __global__ void cl_b(const long N, const double L0, double* const __restr
 
 static __global__ void cl_map(float* const __restrict__ x, const long N, const double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    x[tid] = (float)((double)x[tid] + res[1]);
+  const double r1 = res[1];
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+  for (long long i = start; i < N; i += incr) {
+    x[i] = (float)((double)x[i] + r1);
   }
 }
 
@@ -234,7 +242,7 @@ static inline void conserve_linear(float* const __restrict__ d_x, const long N, 
 
   c_sum<<<blocks, TPB>>>(d_x, N, d_res);
   cl_b<<<1, 1>>>(N, L0, d_res);
-  cl_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  cl_map<<<blocks, TPB>>>(d_x, N, d_res);
 
   cudaFree(d_res);
 }
@@ -258,9 +266,11 @@ static __global__ void clw_b(const double L0, double* const __restrict__ res)
 
 static __global__ void clw_map(float* const __restrict__ x, const long N, const double* const __restrict__ res)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
-  if (tid < N) {
-    x[tid] = (float)((double)x[tid] + res[2]);
+  const double r2 = res[2];
+  const int start = blockIdx.x * blockDim.x + threadIdx.x;
+  const int incr = gridDim.x * blockDim.x;
+  for (long long i = start; i < N; i += incr) {
+    x[i] = (float)((double)x[i] + r2);
   }
 }
 
@@ -276,7 +286,7 @@ static inline void conserve_linear_w(float* const __restrict__ d_x, const long N
 
   c_wsum_sum<<<blocks, TPB>>>(d_x, N, d_w, d_res);
   clw_b<<<1, 1>>>(L0, d_res);
-  clw_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  clw_map<<<blocks, TPB>>>(d_x, N, d_res);
 
   cudaFree(d_res);
 }
@@ -311,7 +321,7 @@ static inline void conserve_energy(float* const __restrict__ d_x, const long N, 
 
   c_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   ce_a<<<1, 1>>>(N, S0, d_res);
-  c_mul_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_mul_map<<<blocks, TPB>>>(d_x, N, d_res);
 
   cudaFree(d_res);
 }
@@ -378,7 +388,7 @@ static inline void conserve_scale_mass(float* const __restrict__ d_x, const long
 
   c_sum<<<blocks, TPB>>>(d_x, N, d_res);
   csm_a<<<1, 1>>>(N, L0, d_res);
-  c_mul_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_mul_map<<<blocks, TPB>>>(d_x, N, d_res);
 
   cudaFree(d_res);
 }
@@ -466,7 +476,7 @@ static inline void conserve_scale_energy(float* const __restrict__ d_x, const lo
 
   c_sum2<<<blocks, TPB>>>(d_x, N, d_res);
   cse_a<<<1, 1>>>(N, S0, d_res);
-  c_mul_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, d_res);
+  c_mul_map<<<blocks, TPB>>>(d_x, N, d_res);
 
   cudaFree(d_res);
 }

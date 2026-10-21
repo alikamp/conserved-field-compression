@@ -62,7 +62,7 @@ struct GPUTimer
   double stop() {cudaEventRecord(end, 0); cudaEventSynchronize(end); float ms; cudaEventElapsedTime(&ms, beg, end); return 0.001 * ms;}
 };
 
-/*
+
 #if defined(STATS)
   static inline float computeNOAeb(const float* const input, const long long size, const float eb_param)
   {
@@ -80,7 +80,7 @@ struct GPUTimer
     return (max - min) * eb_param;
   }
 #endif
-*/
+
 
 static inline void get_conservation_params(const int mode, const int blocks, const float* const __restrict__ d_input, const long long N, double& p1, double& p2)
 {
@@ -159,10 +159,13 @@ int main(int argc, char* argv [])
   #if defined(STATS)
 
     // eb variables
-//    const float parameter = std::stof(argv[3]);
-//    const float eb = computeNOAeb(input, num_elements, parameter);
-    const float eb = std::stof(argv[3]);
+    const float parameter = std::stof(argv[3]);
+    const float eb = computeNOAeb(input, num_elements, parameter);
+//    const float eb = std::stof(argv[3]);
     const auto eb_info = sleek_error_bound(eb * EBfactor);
+    printf("requested NOA EB: %.6f\n", parameter);
+    printf("resulting ABS EB: %.6f\n", eb);
+    printf("utilized  ABS EB: %.6f\n", eb * EBfactor);
 
     // warm up
     double p1, p2;  // conservation parameters
@@ -235,6 +238,9 @@ int main(int argc, char* argv [])
   if (mode & CONS_MASS) fwrite(&p1, 1, sizeof(double), fout);
   if (mode & CONS_ENERGY) fwrite(&p2, 1, sizeof(double), fout);
   fclose(fout);
+
+  if (mode & CONS_MASS) printf("saved p1: %e\n", p1);
+  if (mode & CONS_ENERGY) printf("saved p2: %e\n", p2);
 
   // clean up GPU memory
   cudaFree(d_input);

@@ -132,7 +132,7 @@ static __global__ void c_wsum_sum(const float* const __restrict__ x, const long 
   }
 }
 
-static __global__ void c_mul_map(float* const __restrict__ x, const long N, const double* const __restrict__ res)
+static __global__ void c_mul_map(float* const __restrict__ x, const long long N, const double* const __restrict__ res)
 {
   const double r1 = res[1];
   const int start = blockIdx.x * blockDim.x + threadIdx.x;
@@ -170,7 +170,7 @@ static inline void setBlocks(int& blocks)
    Side-info: M0, S0  (two scalars).
 --------------------------------------------------------------------------- */
 
-static __global__ void cme_mean_var(const long N, const double M0, const double S0, double* const __restrict__ res)
+static __global__ void cme_mean_var(const long long N, const double M0, const double S0, double* const __restrict__ res)
 {
   const double mean = res[0] / N;
   const double mean0 = M0 / N;
@@ -182,7 +182,7 @@ static __global__ void cme_mean_var(const long N, const double M0, const double 
   res[4] = a;
 }
 
-static __global__ void cme_map(float* const __restrict__ x, const long N, const double* const __restrict__ res)
+static __global__ void cme_map(float* const __restrict__ x, const long long N, const double* const __restrict__ res)
 {
   const double r2 = res[2];
   const double r3 = res[3];
@@ -194,7 +194,7 @@ static __global__ void cme_map(float* const __restrict__ x, const long N, const 
   }
 }
 
-static inline void conserve_mass_energy(float* const __restrict__ d_x, const long N, const double M0, const double S0, int blocks = 0)
+static inline void conserve_mass_energy(float* const __restrict__ d_x, const long long N, const double M0, const double S0, int blocks = 0)
 {
   setBlocks(blocks);
 
@@ -217,12 +217,12 @@ static inline void conserve_mass_energy(float* const __restrict__ d_x, const lon
    depends on differences of x, so it composes with the energy scale above.
 --------------------------------------------------------------------------- */
 
-static __global__ void cl_b(const long N, const double L0, double* const __restrict__ res)
+static __global__ void cl_b(const long long N, const double L0, double* const __restrict__ res)
 {
   res[1] = (L0 - res[0]) / N;
 }
 
-static __global__ void cl_map(float* const __restrict__ x, const long N, const double* const __restrict__ res)
+static __global__ void cl_map(float* const __restrict__ x, const long long N, const double* const __restrict__ res)
 {
   const double r1 = res[1];
   const int start = blockIdx.x * blockDim.x + threadIdx.x;
@@ -232,7 +232,7 @@ static __global__ void cl_map(float* const __restrict__ x, const long N, const d
   }
 }
 
-static inline void conserve_linear(float* const __restrict__ d_x, const long N, const double L0, int blocks = 0)
+static inline void conserve_linear(float* const __restrict__ d_x, const long long N, const double L0, int blocks = 0)
 {
   setBlocks(blocks);
 
@@ -264,7 +264,7 @@ static __global__ void clw_b(const double L0, double* const __restrict__ res)
   res[2] = (sw != 0.0) ? ((L0 - res[0]) / sw) : 0.0;
 }
 
-static __global__ void clw_map(float* const __restrict__ x, const long N, const double* const __restrict__ res)
+static __global__ void clw_map(float* const __restrict__ x, const long long N, const double* const __restrict__ res)
 {
   const double r2 = res[2];
   const int start = blockIdx.x * blockDim.x + threadIdx.x;
@@ -274,7 +274,7 @@ static __global__ void clw_map(float* const __restrict__ x, const long N, const 
   }
 }
 
-static inline void conserve_linear_w(float* const __restrict__ d_x, const long N, const double L0, const float* const __restrict__ d_w, int blocks = 0)
+static inline void conserve_linear_w(float* const __restrict__ d_x, const long long N, const double L0, const float* const __restrict__ d_w, int blocks = 0)
 {
   if (!d_w) { conserve_linear(d_x, N, L0); return; }
 
@@ -305,13 +305,13 @@ static inline void conserve_linear_w(float* const __restrict__ d_x, const long N
 
 enum { CONS_MASS = 1, CONS_ENERGY = 2 };
 
-static __global__ void ce_a(const long N, const double S0, double* const __restrict__ res)
+static __global__ void ce_a(const long long N, const double S0, double* const __restrict__ res)
 {
   const double s2 = res[0];
   res[1] = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0;
 }
 
-static inline void conserve_energy(float* const __restrict__ d_x, const long N, const double S0, int blocks = 0)
+static inline void conserve_energy(float* const __restrict__ d_x, const long long N, const double S0, int blocks = 0)
 {
   setBlocks(blocks);
 
@@ -331,7 +331,7 @@ static inline void conserve_energy(float* const __restrict__ d_x, const long N, 
    w:     optional weight field for the linear invariant (momentum: w=density;
           NULL = unweighted, i.e. mass). Ignored for the energy-only path. */
 
-static inline void conserve_apply(float* const __restrict__ d_x, const long N, const int which, const double M0, const double S0, const float* const d_w, int blocks = 0)
+static inline void conserve_apply(float* const __restrict__ d_x, const long long N, const int which, const double M0, const double S0, const float* const d_w, int blocks = 0)
 {
   const int want_m = ((which & CONS_MASS) != 0);
   const int want_e = ((which & CONS_ENERGY) != 0);
@@ -372,13 +372,13 @@ static inline void conserve_apply(float* const __restrict__ d_x, const long N, c
 /* Multiplicative mass corrector for REL bounds (requires single-sign data,
    which REL already requires). alpha = L0 / sum(xhat). Returns alpha. */
 
-static __global__ void csm_a(const long N, const double L0, double* const __restrict__ res)
+static __global__ void csm_a(const long long N, const double L0, double* const __restrict__ res)
 {
   const double s = res[0];
   res[1] = (s != 0.0) ? (L0 / s) : 1.0;
 }
 
-static inline void conserve_scale_mass(float* const __restrict__ d_x, const long N, const double L0, int blocks = 0)
+static inline void conserve_scale_mass(float* const __restrict__ d_x, const long long N, const double L0, int blocks = 0)
 {
   setBlocks(blocks);
 
@@ -398,7 +398,7 @@ static inline void conserve_scale_mass(float* const __restrict__ d_x, const long
    targets. Lets the encoder verify b' + maxdisp <= eps and tighten b' if not,
    without needing the original. Delta_i = (a-1)*(xhat_i - mean) + (mean0 - a*mean). */
 
-static __global__ void cmem_mean_var(const long N, const double M0, const double S0, double* const  __restrict__ res)
+static __global__ void cmem_mean_var(const long long N, const double M0, const double S0, double* const  __restrict__ res)
 {
   const double mean = res[0] / N;
   const double mean0 = M0 / N;
@@ -435,7 +435,7 @@ static __global__ void cmem_max(const float* const __restrict__ x, const long lo
   }
 }
 
-static inline double conserve_mass_energy_maxdisp(const float* const __restrict__ d_x, const long N, const double M0, const double S0, int blocks = 0)
+static inline double conserve_mass_energy_maxdisp(const float* const __restrict__ d_x, const long long N, const double M0, const double S0, int blocks = 0)
 {
   setBlocks(blocks);
 
@@ -460,13 +460,13 @@ enum { CONS_BOUND_ABS = 0, CONS_BOUND_REL = 1 };
    relative bound. Returns 1 on success; returns 0 (and does nothing) if asked
    for mass AND energy together, which is not a single global affine under REL. */
 
-static __global__ void cse_a(const long N, const double S0, double* const  __restrict__ res)
+static __global__ void cse_a(const long long N, const double S0, double* const  __restrict__ res)
 {
   const double s2 = res[0];
   res[1] = (s2 > 0.0) ? sqrt(S0 / s2) : 1.0;
 }
 
-static inline void conserve_scale_energy(float* const __restrict__ d_x, const long N, const double S0, int blocks = 0)
+static inline void conserve_scale_energy(float* const __restrict__ d_x, const long long N, const double S0, int blocks = 0)
 {
   setBlocks(blocks);
 
@@ -481,7 +481,7 @@ static inline void conserve_scale_energy(float* const __restrict__ d_x, const lo
   cudaFree(d_res);
 }
 
-static inline int conserve_apply_rel(float* const __restrict__ d_x, const long N, const int which, const double M0, const double S0)
+static inline int conserve_apply_rel(float* const __restrict__ d_x, const long long N, const int which, const double M0, const double S0)
 {
   const int want_m = ((which & CONS_MASS) != 0);
   const int want_e = ((which & CONS_ENERGY) != 0);
@@ -510,15 +510,15 @@ static inline int conserve_apply_rel(float* const __restrict__ d_x, const long N
 
 /* Decoder: single pass, no reduction. x[i] <- a*x[i] + b. */
 
-static __global__ void caa_map(float* const __restrict__ x, const long N, const double a, const double b)
+static __global__ void caa_map(float* const __restrict__ x, const long long N, const double a, const double b)
 {
-  const long tid = blockIdx.x * (long)TPB + threadIdx.x;
+  const long long tid = blockIdx.x * (long long)TPB + threadIdx.x;
   if (tid < N) {
     x[tid] = (float)(a * (double)x[tid] + b);
   }
 }
 
-static inline void conserve_apply_affine(float* const d_x, const long N, const double a, const double b)
+static inline void conserve_apply_affine(float* const d_x, const long long N, const double a, const double b)
 {
   caa_map<<<(N + TPB - 1) / TPB, TPB>>>(d_x, N, a, b);
   cudaDeviceSynchronize();
@@ -527,7 +527,7 @@ static inline void conserve_apply_affine(float* const d_x, const long N, const d
 /* Encoder, mass+energy -> (a,b): a = sqrt(var0/var), b = mean0 - a*mean.
    C_i = mean0 + a(xhat_i - mean) = a*xhat_i + b, identical to conserve_mass_energy. */
 
-static inline void conserve_mass_energy_params(const float* const __restrict__ d_x, const long N, const double M0, const double S0, double& a_out, double& b_out, int blocks = 0)
+static inline void conserve_mass_energy_params(const float* const __restrict__ d_x, const long long N, const double M0, const double S0, double& a_out, double& b_out, int blocks = 0)
 {
   setBlocks(blocks);
 
@@ -548,7 +548,7 @@ static inline void conserve_mass_energy_params(const float* const __restrict__ d
 
 /* Encoder, mass or weighted momentum -> (1,b). w==NULL => unweighted mass. */
 
-static inline void conserve_linear_params(const float* const __restrict__ d_x, const long N, const double L0, const float* const __restrict__ d_w, double& a_out, double& b_out, int blocks = 0)
+static inline void conserve_linear_params(const float* const __restrict__ d_x, const long long N, const double L0, const float* const __restrict__ d_w, double& a_out, double& b_out, int blocks = 0)
 {
   setBlocks(blocks);
 
@@ -577,7 +577,7 @@ static inline void conserve_linear_params(const float* const __restrict__ d_x, c
 
 /* Encoder, energy only -> (a,0): a = sqrt(S0 / sum xhat^2). */
 
-static inline void conserve_energy_params(const float* const __restrict__ d_x, const long N, const double S0, double& a_out, double& b_out, int blocks = 0)
+static inline void conserve_energy_params(const float* const __restrict__ d_x, const long long N, const double S0, double& a_out, double& b_out, int blocks = 0)
 {
   setBlocks(blocks);
 

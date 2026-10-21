@@ -63,7 +63,7 @@ struct GPUTimer
   double stop() {cudaEventRecord(end, 0); cudaEventSynchronize(end); float ms; cudaEventElapsedTime(&ms, beg, end); return 0.001 * ms;}
 };
 
-/*
+
 #if defined(STATS)
   static inline float computeNOAeb(const float* const input, const long long size, const float eb_param)
   {
@@ -81,7 +81,7 @@ struct GPUTimer
     return (max - min) * eb_param;
   }
 #endif
-*/
+
 
 int main(int argc, char* argv [])
 {
@@ -127,6 +127,8 @@ int main(int argc, char* argv [])
   }
   fclose(fin);
   printf("encoded size: %lld bytes\n", insize + extra_bytes);
+  if (mode & CONS_MASS) printf("using p1: %e\n", p1);
+  if (mode & CONS_ENERGY) printf("using p2: %e\n", p2);
 
   // allocate GPU memory
   float* ddecoded;
@@ -156,10 +158,13 @@ int main(int argc, char* argv [])
     fclose(fin_orig);
 
     // eb variables
-//    const float parameter = std::stof(argv[3]);
-//    const float eb = computeNOAeb((float*) input_orig, insize_orig / sizeof(float), parameter);
-    const float eb = std::stof(argv[3]);
+    const float parameter = std::stof(argv[3]);
+    const float eb = computeNOAeb((float*)input_orig, insize_orig / sizeof(float), parameter);
+//    const float eb = std::stof(argv[3]);
     const auto eb_info = sleek_error_bound(eb * EBfactor);
+    printf("requested NOA EB: %.6f\n", parameter);
+    printf("resulting ABS EB: %.6f\n", eb);
+    printf("utilized  ABS EB: %.6f\n", eb * EBfactor);
 
     // warm up
     float* d_decoded_dummy;

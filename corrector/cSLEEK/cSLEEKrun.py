@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+
+import subprocess
+import re
+import csv
+
+path = "/mnt/c/Inputs/SP/"
+
+files = [
+#    "msg_sppm.sp",
+#    "num_control.sp",
+    "obs_spitzer.sp",
+]
+
+eb_values = [1e-2, 1e-3, 1e-4]
+mode_values = [1, 2, 3]
+
+csv_file = "cSLEEKresults.csv"
+
+with open(csv_file, "w", newline="") as fcsv:
+    writer = csv.writer(fcsv)
+
+    writer.writerow([
+        "input",
+        "error_bound",
+        "mode",
+        "compression_ratio",
+        "preprocessing_GBps",
+        "compression_GBps",
+        "encoding_GBps",
+        "decompression_GBps",
+        "postprocessing_GBps",
+        "decoding_GBps",
+        "abs_eb",
+        "used_eb",
+        "eb_violations",
+        "mass_i",
+        "energy_i"
+    ])
+
+    for infile in files:
+        for e in eb_values:
+            for m in mode_values:
+
+                cmd = ["./cSLEEKcompr", path+infile, "t.t", str(e), str(m)]
+
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True
+                )
+
+                output = result.stdout
+
+                ratio = re.search(r'([0-9.]+)x', output)
+                cpreproc = re.search(
+                    r'cpreproc throughput:\s+([0-9.]+)\s+Gbytes/s',
+                    output
+                )
+                encoding = re.search(
+                    r'encoding throughput:\s+([0-9.]+)\s+Gbytes/s',
+                    output
+                )
+                coverall = re.search(
+                    r'over-all throughput:\s+([0-9.]+)\s+Gbytes/s',
+                    output
+                )
+
+
+                cmd = ["./cSLEEKdecom", "t.t", "tt.tt", str(e), str(m), path+infile]
+
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True
+                )
+
+                output = result.stdout
+
+                decoding = re.search(
+                    r'decoding throughput:\s+([0-9.]+)\s+Gbytes/s',
+                    output
+                )
+                postproc = re.search(
+                    r'postproc throughput:\s+([0-9.]+)\s+Gbytes/s',
+                    output
+                )
+                doverall = re.search(
+                    r'over-all throughput:\s+([0-9.]+)\s+Gbytes/s',
+                    output
+                )
+
+
+                cmd = ["./check_conservation", path+infile, "tt.tt", str(e)]
+
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True
+                )
+
+                output = result.stdout
+
+                abseb = re.search(
+                    r'resulting ABS EB:\s+([0-9.]+)\s+',
+                    output
+                )
+                usedeb = re.search(
+                    r'utilized  ABS EB:\s+([0-9.]+)\s+',
+                    output
+                )
+                violations = re.search(
+                    r'num_eb_violations:\s+([0-9]+)\s+',
+                    output
+                )
+                mass = re.search(
+                    r'\s+mass:\s+([0-9.e-]+)\s+',
+                    output
+                )
+                energy = re.search(
+                    r'\s+energy:\s+([0-9.e-]+)\s+',
+                    output
+                )
+
+
+                if all([ratio, cpreproc, encoding, coverall, decoding, postproc, doverall, abseb, usedeb, violations, mass, energy]):
+                    writer.writerow([
+                        infile,
+                        e,
+                        m,
+                        float(ratio.group(1)),
+                        float(cpreproc.group(1)),
+                        float(encoding.group(1)),
+                        float(coverall.group(1)),
+                        float(decoding.group(1)),
+                        float(postproc.group(1)),
+                        float(doverall.group(1)),
+                        float(abseb.group(1)),
+                        float(usedeb.group(1)),
+                        int(violations.group(1)),
+                        float(mass.group(1)),
+                        float(energy.group(1))
+                    ])
+
+                    print(
+                        f"enc {infile} eb={e} mode={m} "
+                        f"ratio={ratio.group(1)} "
+                        f"pre={cpreproc.group(1)} "
+                        f"enc={encoding.group(1)} "
+                        f"call={coverall.group(1)} "
+                        f"dec={decoding.group(1)} "
+                        f"pst={postproc.group(1)} "
+                        f"dall={doverall.group(1)} "
+                        f"abs={abseb.group(1)} "
+                        f"used={usedeb.group(1)} "
+                        f"vio={violations.group(1)} "
+                        f"mass={mass.group(1)} "
+                        f"en={energy.group(1)} "
+                    )
+                else:
+                    print(
+                        f"WARNING: Could not parse output "
+                        f"when processing {infile} for eb={e} mode={m}"
+                    )
+
+    cmd = ["rm", "-f", "t.t", "tt.tt"]
+    result = subprocess.run(
+        cmd,
+        capture_output=False,
+        text=True
+    )
+
+print(f"Results written to {csv_file}")

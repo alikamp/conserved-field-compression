@@ -1,5 +1,5 @@
 // checks EB and conservation
-// g++ -O3 check_conservation.cpp -o check_conservation
+// g++ -O3 -march=native -mno-fma -ffp-contract=off check_conservation.cpp -o check_conservation
 
 
 using byte = unsigned char;

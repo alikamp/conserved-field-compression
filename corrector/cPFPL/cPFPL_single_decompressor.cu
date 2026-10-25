@@ -1,5 +1,5 @@
 // cPFPL modification of PFPL
-// nvcc -O3 -arch=sm_86 cPFPL_single_decompressor.cu -o cPFPLdecom -DSTATS
+// nvcc -O3 -arch=sm_86 -fmad=false -Xcompiler "-O3 -march=native -mno-fma -ffp-contract=off" cPFPL_single_decompressor.cu -o cPFPLdecom -DSTATS
 
 /*
 This file is part of the LC framework for synthesizing high-speed parallel lossless and error-bounded lossy data compression and decompression algorithms for CPUs and GPUs.
@@ -362,14 +362,14 @@ int main(int argc, char* argv [])
     printf("ratio: %6.2f%% %7.3fx\n", CR, 100.0 / CR);
 
     if (mode != 0) {
-      printf("cpreproc time: %.6f s\n", constime);
+      printf("postproc time: %.6f s\n", constime);
       const double throughput = ddecsize * 0.000000001 / constime;
-      printf("cpreproc throughput: %8.3f Gbytes/s\n", throughput);
+      printf("postproc throughput: %8.3f Gbytes/s\n", throughput);
     }
 
-    printf("encoding time: %.6f s\n", runtime);
+    printf("decoding time: %.6f s\n", runtime);
     const double throughput = ddecsize * 0.000000001 / runtime;
-    printf("encoding throughput: %8.3f Gbytes/s\n", throughput);
+    printf("decoding throughput: %8.3f Gbytes/s\n", throughput);
 
     if (mode != 0) {
       printf("over-all time: %.6f s\n", constime + runtime);

@@ -114,11 +114,11 @@ with open(csv_file, "w", newline="") as fcsv:
                     output
                 )
                 mass = re.search(
-                    r'\s+mass:\s+([0-9.e-]+)\s+',
+                    r'\s+mass:\s+([0-9.e+-]+)\s+',
                     output
                 )
                 energy = re.search(
-                    r'\s+energy:\s+([0-9.e-]+)\s+',
+                    r'\s+energy:\s+([0-9.e+-]+)\s+',
                     output
                 )
 

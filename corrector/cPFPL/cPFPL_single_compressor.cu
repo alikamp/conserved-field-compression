@@ -1,5 +1,5 @@
 // cPFPL modification of PFPL
-// nvcc -O3 -arch=sm_86 cPFPL_single_compressor.cu -o cPFPLcompr -DSTATS
+// nvcc -O3 -arch=sm_86 -fmad=false -Xcompiler "-O3 -march=native -mno-fma -ffp-contract=off" cPFPL_single_compressor.cu -o cPFPLcompr -DSTATS
 
 /*
 This file is part of the LC framework for synthesizing high-speed parallel lossless and error-bounded lossy data compression and decompression algorithms for CPUs and GPUs.
@@ -64,7 +64,7 @@ static const int CS = 1024 * 16;  // chunk size (in bytes) [must be multiple of 
 #include "components/d_RZE_1.h"
 
 
-static const float EBfactor = 0.9f;
+static const float EBfactor = 0.5f;
 
 
 const int NUM_RUNS = 2;  // one warmup run
@@ -424,12 +424,12 @@ int main(int argc, char* argv [])
   #if defined(STATS)
     const float parameter = std::stof(argv[3]);
     const float eb = computeNOAeb((float*)input, N, parameter);
-    const float errorbound = eb * EBfactor;
+    const float errorbound = eb * ((mode == 0) ? 1.0f : EBfactor);
     printf("requested NOA EB: %.6f\n", parameter);
     printf("resulting ABS EB: %.6f\n", eb);
     printf("utilized  ABS EB: %.6f\n", errorbound);
   #else
-    const float errorbound = atof(argv[3]) * EBfactor;
+    const float errorbound = atof(argv[3]) * ((mode == 0) ? 1.0f : EBfactor);
   #endif
 
   const float threshold = (argc == 6) ? atof(argv[5]) : std::numeric_limits<float>::infinity();

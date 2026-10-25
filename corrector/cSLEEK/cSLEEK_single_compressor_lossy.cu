@@ -162,10 +162,10 @@ int main(int argc, char* argv [])
     const float parameter = std::stof(argv[3]);
     const float eb = computeNOAeb(input, num_elements, parameter);
 //    const float eb = std::stof(argv[3]);
-    const auto eb_info = sleek_error_bound(eb * EBfactor);
+    const auto eb_info = sleek_error_bound(eb * ((mode == 0) ? 1.0f : EBfactor));
     printf("requested NOA EB: %.6f\n", parameter);
     printf("resulting ABS EB: %.6f\n", eb);
-    printf("utilized  ABS EB: %.6f\n", eb * EBfactor);
+    printf("utilized  ABS EB: %.6f\n", eb * ((mode == 0) ? 1.0f : EBfactor));
 
     // warm up
     double p1, p2;  // conservation parameters
@@ -214,7 +214,7 @@ int main(int argc, char* argv [])
 
     // eb variables
     const float eb = std::stof(argv[3]);
-    const auto eb_info = sleek_error_bound(eb * EBfactor);
+    const auto eb_info = sleek_error_bound(eb * ((mode == 0) ? 1.0f : EBfactor));
 
     double p1, p2;  // conservation parameters
     get_conservation_params(mode, blocks, d_input, N, p1, p2);

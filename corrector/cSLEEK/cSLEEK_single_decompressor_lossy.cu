@@ -161,10 +161,10 @@ int main(int argc, char* argv [])
     const float parameter = std::stof(argv[3]);
     const float eb = computeNOAeb((float*)input_orig, insize_orig / sizeof(float), parameter);
 //    const float eb = std::stof(argv[3]);
-    const auto eb_info = sleek_error_bound(eb * EBfactor);
+    const auto eb_info = sleek_error_bound(eb * ((mode == 0) ? 1.0f : EBfactor));
     printf("requested NOA EB: %.6f\n", parameter);
     printf("resulting ABS EB: %.6f\n", eb);
-    printf("utilized  ABS EB: %.6f\n", eb * EBfactor);
+    printf("utilized  ABS EB: %.6f\n", eb * ((mode == 0) ? 1.0f : EBfactor));
 
     // warm up
     float* d_decoded_dummy;
@@ -220,7 +220,7 @@ int main(int argc, char* argv [])
 
     // eb variables
     const float eb = std::stof(argv[3]);
-    const auto eb_info = sleek_error_bound(eb * EBfactor);
+    const auto eb_info = sleek_error_bound(eb * ((mode == 0) ? 1.0f : EBfactor));
 
     sleek_decompress_gpu(blocks, eb_info, d_encoded, d_decoded, d_decsize);
     long long ddecsize = 0;

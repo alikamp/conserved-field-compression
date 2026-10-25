@@ -4,15 +4,15 @@ import subprocess
 import re
 import csv
 
-path = "/mnt/c/Inputs/SP/"
+path = "/mnt/c/Inputs/SDRbench/minSSIMinputs/"
 
 files = [
-#    "msg_sppm.sp",
-#    "num_control.sp",
-    "obs_spitzer.sp",
+    "sdrbench-ISABEL-100x500x500-TCf48.bin.f32",
+    "sdrbench-NYX-SDRBENCH-EXASKY-NYX-512x512x512-velocity_x.f32",
+    "sdrbench-MIRANDA-256x384x384-density.f32"
 ]
 
-eb_values = [1e-2, 1e-3, 1e-4]
+eb_values = [1e-2, 3e-3, 1e-3, 3e-4, 1e-4]
 mode_values = [1, 2, 3]
 
 csv_file = "cSLEEKresults.csv"
@@ -38,9 +38,9 @@ with open(csv_file, "w", newline="") as fcsv:
         "energy_i"
     ])
 
-    for infile in files:
-        for e in eb_values:
-            for m in mode_values:
+    for m in mode_values:
+        for infile in files:
+            for e in eb_values:
 
                 cmd = ["./cSLEEKcompr", path+infile, "t.t", str(e), str(m)]
 
@@ -143,7 +143,7 @@ with open(csv_file, "w", newline="") as fcsv:
                     ])
 
                     print(
-                        f"enc {infile} eb={e} mode={m} "
+                        f"{infile} eb={e} mode={m} "
                         f"ratio={ratio.group(1)} "
                         f"pre={cpreproc.group(1)} "
                         f"enc={encoding.group(1)} "

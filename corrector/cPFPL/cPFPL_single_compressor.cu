@@ -64,7 +64,7 @@ static const int CS = 1024 * 16;  // chunk size (in bytes) [must be multiple of 
 #include "components/d_RZE_1.h"
 
 
-static const float EBfactor = 0.5f;
+static const float EBfactor = 0.9f;
 
 
 const int NUM_RUNS = 2;  // one warmup run

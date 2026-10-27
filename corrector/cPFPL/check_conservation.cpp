@@ -11,7 +11,7 @@ using byte = unsigned char;
 #include "MAXABS_f32.h"
 
 
-static const float EBfactor = 0.5f;
+static const float EBfactor = 0.9f;
 
 
 static inline float computeNOAeb(const float* const input, const long long size, const float eb_param)

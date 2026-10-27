@@ -7,9 +7,9 @@ import csv
 path = "/mnt/c/Inputs/SDRbench/minSSIMinputs/"
 
 files = [
+    "sdrbench-CESM-SDRBENCH-CESM-ATM-26x1800x3600-RELHUM_1_26_1800_3600.f32",
     "sdrbench-ISABEL-100x500x500-TCf48.bin.f32",
     "sdrbench-NYX-SDRBENCH-EXASKY-NYX-512x512x512-velocity_x.f32",
-    "sdrbench-MIRANDA-256x384x384-density.f32"
 ]
 
 eb_values = [1e-2, 3e-3, 1e-3, 3e-4, 1e-4]

@@ -276,7 +276,7 @@ static __global__ void clw_map(float* const __restrict__ x, const long long N, c
 
 static inline void conserve_linear_w(float* const __restrict__ d_x, const long long N, const double L0, const float* const __restrict__ d_w, int blocks = 0)
 {
-  if (!d_w) { conserve_linear(d_x, N, L0); return; }
+  if (!d_w) { conserve_linear(d_x, N, L0, blocks); return; }
 
   setBlocks(blocks);
 

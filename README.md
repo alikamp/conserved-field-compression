@@ -1,4 +1,4 @@
-# Conserved-Field Compression
+# Conserved-Field Compression- submitted to IWBDR-6, the IEEE BigData 2026 workshop.
 
 **Lossy scientific compression conserving the physics.**
 

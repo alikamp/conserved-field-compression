@@ -2,7 +2,7 @@
 
 **Lossy compression that keeps the physics exact.**
 
-> **Paper:** *Codec-Agnostic Exact Conservation in Lossy Scientific Data Compression*, A. M. Parks and M. Burtscher (Texas State University). Submitted to IWBDR-6, the 6th International Workshop on Big Data Reduction at IEEE BigData 2026.
+> **Paper:** *Codec-Agnostic Exact Conservation in Lossy Scientific Data Compression* - Submitted to IWBDR-6, the 6th International Workshop on Big Data Reduction at IEEE BigData 2026.
 
 Lossy compressors keep every value within an error bound, but totals like mass and energy quietly drift, and the drift grows the harder you compress. This project adds a closed-form layer that makes those totals **exact** after decompression, for **two stored numbers per field**, with any compressor and without changing its pointwise error bound.
 

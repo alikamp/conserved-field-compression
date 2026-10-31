@@ -1,27 +1,59 @@
-# Conserved-Field Compression- submitted to IWBDR-6, the IEEE BigData 2026 workshop.
+# Conserved-Field Compression
 
-**Lossy scientific compression conserving the physics.**
+**Lossy compression that keeps the physics exact.**
 
-A closed-form conservation layer for ZFP and other lossy scientific codecs.
-Exact energy conservation, near-zero compression-ratio overhead, and no change
-to the codec's pointwise error bound. (Energy today; the same closed-form
-method extends to other invariants.)
+> **Paper:** *Codec-Agnostic Exact Conservation in Lossy Scientific Data Compression*, A. M. Parks and M. Burtscher (Texas State University). Submitted to IWBDR-6, the 6th International Workshop on Big Data Reduction at IEEE BigData 2026.
 
-Lossy compressors for scientific floating-point grids (ZFP, SZ, TTHRESH)
-guarantee a *pointwise* error bound. They do **not** guarantee that
-*integrated physical invariants* — total energy, mass, momentum — survive
-compression. Downstream analysis that checks an energy budget or a
-conservation law sees the compressed field drift, and the drift grows the
-harder you compress.
+Lossy compressors keep every value within an error bound, but totals like mass and energy quietly drift, and the drift grows the harder you compress. This project adds a closed-form layer that makes those totals **exact** after decompression, for **two stored numbers per field**, with any compressor and without changing its pointwise error bound.
 
-This project adds an exact conservation guarantee on top of an existing lossy
-codec, for a handful of bytes, in closed form. It also includes a standalone
-attention-routed block codec used to develop the idea.
+- **Up to 9 orders of magnitude less drift.** On NYX cosmology data compressed 1,304× with SZ3, energy drift drops from 3.1×10⁻³ to 2.3×10⁻¹².
+- **Works with any codec.** Validated with ZFP and SZ3 on CPU, and with PFPL and SLEEK on GPU.
+- **Real data.** SDRBench climate (CESM), weather (Hurricane ISABEL) and cosmology (NYX) fields, from 1D line-outs to full 3D.
+- **Nearly free.** 16 bytes per field. The ratio cost is 0–15% from a 10% bound tightening, and often zero.
+- **Fast.** With SLEEK on an RTX 4090, compression runs at about 350 GB/s and decompression at about 190 GB/s with mass and energy both conserved.
+- **Proven.** Exactness and error-bound guarantees are derived in closed form in the paper.
 
-> **Status: research code.** Validated on synthetic 3D turbulence. Not yet
-> tested on production simulation output. Numbers below are reproducible from
-> this repo (`colab.ipynb` → Run all, or the scripts in "Reproduce").
+| Data | Codec | Ratio | Energy drift: codec → with layer | Mass drift: codec → with layer |
+|---|---|---:|---|---|
+| NYX velocity | SZ3 | 1304× | 3.1e-3 → **2.3e-12** | 4.5e-5 → **4.0e-12** |
+| ISABEL temperature | SZ3 | 903× | 1.5e-3 → **1.2e-11** | 6.7e-4 → **4.0e-12** |
+| CESM humidity | PFPL (GPU) | 56× | 1.4e-4 → **1.6e-10** | 7.0e-4 → **1.2e-10** |
+| NYX velocity | ZFP | 22.5× | 1.7e-5 → **3.2e-11** | 3.7e-6 → **7.3e-11** |
 
+## How it works
+
+Before compression, store the field's total mass M₀ = Σxᵢ and energy S₀ = Σxᵢ². After decompression, one affine map restores both exactly. An offset fixes the mean, and a scale about the mean fixes the variance; neither disturbs the other:
+
+```
+C(x̂ᵢ) = mean₀ + a·(x̂ᵢ − mean),   a = √(var₀ / var)
+```
+
+Mass only, energy only, weighted invariants such as momentum, and mass+energy together are all supported through one interface.
+
+## Get started
+
+The current implementation is in [`corrector/`](corrector/):
+
+| File | What it is |
+|---|---|
+| `conserve.h` | CPU reference (C/C++, optional OpenMP) |
+| `conserve_cuda.h` | GPU version (CUDA) |
+| `cSLEEK/`, `cPFPL/` | Integrations with the SLEEK and PFPL GPU compressors |
+| `sz3_adapter.py`, `rd_full.py` | Python benchmark harness for SZ3 and ZFP |
+| `results/RESULTS.md` | GPU results on an RTX 4090 |
+
+```c
+#include "conserve.h"
+// before compression: M0 = sum(x), S0 = sum(x*x) over the original field
+// after decompression, in place:
+conserve_mass_energy(xhat, N, M0, S0);   // mass and energy now exact
+```
+
+Ideas, questions and collaborations are welcome. Open an issue or reach out.
+
+---
+
+## Where it started: ZFP+ and the standalone codec
 ---
 
 ## Dive in: ZFP+ (`zfp_plus.py`)
